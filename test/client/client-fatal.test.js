@@ -155,13 +155,25 @@ function responseOnEvenSid() {
   return [frame(f.HEADERS, f.F_END_STREAM | f.F_END_HEADERS, 2, Buffer.from([0x88]))];
 }
 
-async function assertFatalParity(answerFrames) {
+// `legacy` marks the two measured deviations of node 20/22's own client (out/
+// probe-client-fatal-node20.js, v20.19.5 / v22.21.1 / v26.12.1): for the padded shapes the
+// old bundled nghttp2 terminates the session at the C layer without surfacing anything on
+// the JS client -- no error events, no closes, the wire GOAWAY is the only observable --
+// and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. h2lite
+// pins the v24+ surface in both cases; in legacy mode the node arm only has to have sent
+// a fatal GOAWAY.
+async function assertFatalParity(answerFrames, legacy) {
   for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
     const { events, got } = await run(impl, answerFrames);
     const joined = events.join(' | ');
     const goaway = got.find((g) => g.type === f.GOAWAY);
     assert.ok(goaway !== undefined,
       `${who}: no GOAWAY on the wire (${joined})`);
+    if (who === 'node' && legacy) {
+      assert.ok(goaway.code === 1 || goaway.code === 2,
+        `${who}: unexpected GOAWAY code ${goaway.code} (${joined})`);
+      continue;
+    }
     assert.strictEqual(goaway.code, 1,
       `${who}: GOAWAY code is not PROTOCOL_ERROR (${joined})`);
     assert.ok(events.includes('stream error ERR_HTTP2_ERROR'),
@@ -183,23 +195,23 @@ async function assertFatalParity(answerFrames) {
 }
 
 test('a padded DATA frame whose padding does not fit: GOAWAY + ERR_HTTP2_ERROR', async () => {
-  await assertFatalParity(padTooBigData());
+  await assertFatalParity(padTooBigData(), true);
 });
 
 test('a padded HEADERS whose padding does not fit: GOAWAY + ERR_HTTP2_ERROR', async () => {
-  await assertFatalParity(padTooBigHeaders());
+  await assertFatalParity(padTooBigHeaders(), true);
 });
 
 test('a padded HEADERS with an empty payload: GOAWAY + ERR_HTTP2_ERROR', async () => {
-  await assertFatalParity(emptyPaddedHeaders());
+  await assertFatalParity(emptyPaddedHeaders(), true);
 });
 
 test('response HEADERS on an unopened odd stream id: GOAWAY + ERR_HTTP2_ERROR', async () => {
-  await assertFatalParity(responseOnUnopenedSid());
+  await assertFatalParity(responseOnUnopenedSid(), true);
 });
 
 test('response HEADERS on an even stream id: GOAWAY + ERR_HTTP2_ERROR', async () => {
-  await assertFatalParity(responseOnEvenSid());
+  await assertFatalParity(responseOnEvenSid(), true);
 });
 
 test('response HEADERS again on a closed stream id: both stacks ignore it', async () => {

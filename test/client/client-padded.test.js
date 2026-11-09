@@ -114,15 +114,28 @@ async function run(impl, payload, flags) {
   }
 }
 
+// node 20/22's client surfaces NOTHING for these shapes: the old bundled nghttp2 kills
+// the session at the C layer without emitting any JS event -- no stream/session error, no
+// closes (measured, see the legacy note in client-fatal.test.js). The wire-level verdict
+// for the same shapes is pinned in client-fatal.test.js; here the node arm is asserted
+// only when its version surfaces the teardown, while h2lite is pinned to node 24+
+// behavior in full.
+const assertSessionEnd = (who, events) => {
+  if (who === 'node' && events.length === 0) {
+    return;
+  }
+  assert.ok(events.includes('stream close'),
+    `${who}: the stream stayed open on a malformed frame (${events.join(' | ')})`);
+  assert.ok(events.includes('session close'),
+    `${who}: the session stayed open on a malformed frame (${events.join(' | ')})`);
+  assert.ok(!events.includes('end'),
+    `${who}: the answer was delivered as a complete body (${events.join(' | ')})`);
+};
+
 test('a padded DATA frame with an empty payload ends the session', async () => {
   for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
     const events = await run(impl, Buffer.alloc(0), f.F_PADDED);
-    assert.ok(events.includes('stream close'),
-      `${who}: the stream stayed open on a malformed frame (${events.join(' | ')})`);
-    assert.ok(events.includes('session close'),
-      `${who}: the session stayed open on a malformed frame (${events.join(' | ')})`);
-    assert.ok(!events.includes('end'),
-      `${who}: the answer was delivered as a complete body (${events.join(' | ')})`);
+    assertSessionEnd(who, events);
   }
 });
 
@@ -132,11 +145,6 @@ test('a padded DATA frame whose padding does not fit ends the session', async ()
   for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
     const payload = Buffer.concat([Buffer.from([200]), Buffer.alloc(3)]);
     const events = await run(impl, payload, f.F_PADDED);
-    assert.ok(events.includes('stream close'),
-      `${who}: the stream stayed open on a malformed frame (${events.join(' | ')})`);
-    assert.ok(events.includes('session close'),
-      `${who}: the session stayed open on a malformed frame (${events.join(' | ')})`);
-    assert.ok(!events.includes('end'),
-      `${who}: the answer was delivered as a complete body (${events.join(' | ')})`);
+    assertSessionEnd(who, events);
   }
 });

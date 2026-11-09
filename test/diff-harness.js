@@ -45,9 +45,14 @@ function closeServer(srv) {
         session.destroy();
       }
       srv.close(finish); // already closing: net.Server answers with
-      setTimeout(finish, 500).unref(); // ERR_SERVER_NOT_RUNNING, which is also a finish
-      // and if the port still will not be given up, stop it holding the process open: a test that
-      // has finished asserting must be allowed to report.
+      // The finish timer must stay ref'd: node 20/22 never call the close callback for an
+      // http2 server whose last session ended in a protocol-error GOAWAY
+      // (nodejs/node#57611, fixed in 609df89 for v24+, never backported), and an unref'd
+      // finish would let the event loop drain with this promise still pending -- the
+      // runner then reports 'Promise resolution is still pending' and cancels the whole
+      // file. Ref'd, the extra wait is bounded at 500ms; a port that will not be given
+      // up still cannot hold the process, because the server itself is unref'd below.
+      setTimeout(finish, 500); // ERR_SERVER_NOT_RUNNING, which is also a finish
       if (srv.unref) {
         srv.unref();
       }

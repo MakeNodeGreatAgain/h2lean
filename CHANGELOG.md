@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [Unreleased]
+
+### Fixed
+
+- `npm test` runs green on node 20 and 22, not only on node 24+. The failures were
+  node's own, not h2lite's: the pre-24 bundled nghttp2 answers different verdicts
+  (`INTERNAL_ERROR` where node 24+ maps the protocol failure to `PROTOCOL_ERROR`, an
+  unopened-id response `GOAWAY` of 2 instead of 1, a silent C-layer teardown for
+  padded-frame violations) and node's `Http2Server.close()` never calls back after a
+  protocol-error GOAWAY (nodejs/node#57611, fixed for v24+, never backported). The
+  differential tests pin h2lite to the node 24+ behavior and let the node arm answer
+  whichever its bundled nghttp2 produces; the client suite is passed as a glob because
+  node 22's runner rejects a directory argument; `--test-timeout` is 120 s because the
+  close bug costs the deadline path ~1 s per GOAWAY shape on old node.
+
 ## [0.1.0] — 2026-11-09
 
 First public release.

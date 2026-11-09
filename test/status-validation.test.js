@@ -224,6 +224,12 @@ async function callCompat(impl, act) {
   return outcome;
 }
 
+// The four writeInformation cases carry a second expectation: node before v24 throws a
+// code-less error out of writeInformation() for every status and never puts an informational
+// response on the wire -- measured on v20.19.5 and v22.21.1, all four statuses identical
+// ('server[throw:undefined] client[status:200]'). h2lite pins the v24+ behavior; the node
+// arm accepts whichever its version produces.
+const LEGACY_WRITE_INFORMATION = 'server[throw:undefined] client[status:200]';
 const compatCases = [
   ['writeHead(101)', (res) => {
     res.writeHead(101);
@@ -255,22 +261,22 @@ const compatCases = [
   ['writeContinue()', (res) => res.writeContinue(),
     'server[sync:true] client[continue,status:200]'],
   ['writeInformation(100)', (res) => res.writeInformation(100),
-    'server[sync:true] client[continue,status:200]'],
+    'server[sync:true] client[continue,status:200]', LEGACY_WRITE_INFORMATION],
   ['writeInformation(101)', (res) => res.writeInformation(101),
-    'server[throw:ERR_HTTP2_STATUS_INVALID] client[status:200]'],
+    'server[throw:ERR_HTTP2_STATUS_INVALID] client[status:200]', LEGACY_WRITE_INFORMATION],
   ['writeInformation(103)', (res) => res.writeInformation(103),
-    'server[sync:true] client[status:200]'],
+    'server[sync:true] client[status:200]', LEGACY_WRITE_INFORMATION],
   ['writeInformation(204)', (res) => res.writeInformation(204),
-    'server[throw:ERR_HTTP2_STATUS_INVALID] client[status:200]']
+    'server[throw:ERR_HTTP2_STATUS_INVALID] client[status:200]', LEGACY_WRITE_INFORMATION]
 ];
 
-for (const [name, act, want] of compatCases) {
+for (const [name, act, want, nodeWant] of compatCases) {
   test(`compat ${name} -> ${want}`, async () => {
     const got = [];
     for (const impl of [h2lite, nodeHttp2]) {
       got.push(await callCompat(impl, act));
     }
-    assert.strictEqual(got[1], want, `node itself produced ${got[1]}`);
+    assert.ok(got[1] === want || got[1] === nodeWant, `node itself produced ${got[1]}`);
     assert.strictEqual(got[0], want, `h2lite produced ${got[0]}, node produced ${got[1]}`);
   });
 }

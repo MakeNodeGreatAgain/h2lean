@@ -18,6 +18,10 @@
 //   a frame before the client's own SETTINGS   -- node: GOAWAY PROTOCOL_ERROR
 //     'SETTINGS expected' for HEADERS, PING and a SETTINGS carrying ACK alike
 //     (RFC 9113 3.4). h2lite used to accept all three and answer them normally.
+//     Version-dependent on the node arm: node 24+ bundles an nghttp2 that answers
+//     PROTOCOL_ERROR 'SETTINGS expected' (measured on v26.12.1), while node 20/22
+//     bundle an older nghttp2 that answers INTERNAL_ERROR with no debug data --
+//     measured on v20.19.5 and v22.21.1, all three violations, same answer.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
@@ -300,8 +304,12 @@ test('the client\'s first frame has to be a SETTINGS without the ACK flag', asyn
       answers.push(await driveFirstFrame(port, first));
       await closeServer(srv);
     }
-    assert.strictEqual(answers[0], answers[1], `${label}: the two stacks answered differently`);
+    // The two stacks must agree, modulo the bundled-nghttp2 verdict: h2lite pins the
+    // node 24+ answer; node 20/22 bundle an older nghttp2 that says INTERNAL_ERROR with
+    // no debug data for the same violation (measured, see the header of this file).
     assert.strictEqual(answers[0], 'GOAWAY:PROTOCOL_ERROR "SETTINGS expected"', label);
+    assert.ok(answers[1] === answers[0] || answers[1] === 'GOAWAY:INTERNAL_ERROR ""',
+      `${label}: node answered [${answers[1]}], which is neither nghttp2 verdict`);
   }
 });
 

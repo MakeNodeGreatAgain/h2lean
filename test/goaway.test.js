@@ -460,6 +460,20 @@ test('server.close() stops accepting connections while a busy session drains', a
     // have to be destroyed for the close to complete.
   const want = { acceptedAfterClose: false, closeCbWhileBusy: false,
     closeCbAfterDrain: true, closeCbAfterClientGone: true };
-  assert.deepStrictEqual(await probe(nodeHttp2), want, 'node');
+  // node 20/22 complete the close only once the client is gone as well: there the ended
+  // request socket is not counted as the last connection (measured on v20.19.5 and
+  // v22.21.1 -- the callback arrives right after client.destroy()). h2lite follows the
+  // newer accounting; the node arm accepts either its version produces.
+  const same = (a, b) => {
+    try {
+      assert.deepStrictEqual(a, b);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const nodeGot = await probe(nodeHttp2);
+  assert.ok(same(nodeGot, want) || same(nodeGot, { ...want, closeCbAfterDrain: false }),
+    `node: ${JSON.stringify(nodeGot)} matches neither the v24+ nor the v20/22 accounting`);
   assert.deepStrictEqual(await probe(h2lite), want, 'h2lite');
 });

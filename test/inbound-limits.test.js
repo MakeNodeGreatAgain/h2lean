@@ -329,10 +329,19 @@ async function once(impl, settings, respond, send, deadline = 350) {
   return got;
 }
 
-async function both(label, settings, respond, send, want, deadline = 350) {
+// node's bundled nghttp2 changed verdicts between the v20/22 and the v24+ bundles -- measured
+// on v20.19.5, v22.21.1 and v26.12.1 (the full matrix, out/probe-verdicts-node20.js, kept as a
+// scratch because the numbers are the point): the old bundle answers INTERNAL_ERROR where the
+// new one maps the protocol failure to PROTOCOL_ERROR, still enforces RFC 7540 5.3.1's
+// self-dependency rule for PRIORITY (the new one follows RFC 9218 and drops the frame), and
+// reads a too-long content-length as a stream error rather than a connection error. h2lite
+// pins the v24+ verdict everywhere; `nodeWant`, when given, is the measured v20/22 verdict
+// the node arm may answer instead.
+async function both(label, settings, respond, send, want, deadline = 350, nodeWant = want) {
   const node = await once(nodeHttp2, settings, respond, send, deadline);
   const ours = await once(h2lite, settings, respond, send, deadline);
-  assert.strictEqual(node.verdict, want, `node: ${label} -> ${node.verdict}`);
+  assert.ok(node.verdict === want || node.verdict === nodeWant,
+    `node: ${label} -> ${node.verdict}`);
   assert.strictEqual(ours.verdict, want,
     `h2lite: ${label} -> ${ours.verdict}, node -> ${node.verdict}`);
 }
@@ -598,19 +607,19 @@ test('SETTINGS and PING on a stream id, and RST_STREAM on stream 0, end the conn
     await both('SETTINGS on stream 1', undefined, false, (sock) => {
       sock.write(frame(f.SETTINGS, 0, 1, setting(0x3, 65535)));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
     await both('PING on stream 3', undefined, false, (sock) => {
       sock.write(frame(f.PING, 0, 3, Buffer.alloc(8)));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
     await both('PING with the ACK flag on stream 3', undefined, false, (sock) => {
       sock.write(frame(f.PING, f.F_ACK, 3, Buffer.alloc(8)));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
     await both('RST_STREAM with stream id 0', undefined, false, (sock) => {
       sock.write(rst(0, 0));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
   });
 
 test('an ACK carries no payload: SETTINGS|ACK and PING|ACK are sized', async () => {
@@ -637,7 +646,7 @@ test('SETTINGS_ENABLE_PUSH is a boolean', async () => {
   await both('SETTINGS_ENABLE_PUSH=2', undefined, false, (sock) => {
     sock.write(frame(f.SETTINGS, 0, 0, setting(0x2, 2)));
     sock.write(req(REQ));
-  }, 'GOAWAY(PROTOCOL_ERROR)');
+  }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
   await both('SETTINGS_ENABLE_PUSH=1 is accepted', undefined, true, (sock) => {
     sock.write(frame(f.SETTINGS, 0, 0, setting(0x2, 1)));
     sock.write(req(REQ));
@@ -657,11 +666,11 @@ test('WINDOW_UPDATE and RST_STREAM for a stream in the idle state end the connec
     await both('WINDOW_UPDATE for stream 3, nothing opened past 1', undefined, false, (sock) => {
       sock.write(wu(3, 1024));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
     await both('RST_STREAM for stream 3, nothing opened past 1', undefined, false, (sock) => {
       sock.write(rst(3, 0));
       sock.write(req(REQ));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
     // The line is the highest id the peer has opened, not whether a stream object still exists:
     // after stream 1 was served, its id is at or below that line and a late WINDOW_UPDATE or reset
     // for it is 5.1's "discard" case -- no verdict of any kind, the connection lives. Whether the
@@ -685,7 +694,9 @@ test('WINDOW_UPDATE and RST_STREAM for a stream in the idle state end the connec
     const idleAfterServed = async (label, respond, send) => {
       const node = await once(nodeHttp2, undefined, respond, send);
       const ours = await once(h2lite, undefined, respond, send);
-      assert.strictEqual(node.verdict.replace(/^ANSWERED /, ''), 'GOAWAY(PROTOCOL_ERROR)',
+      // the v20/22 bundle answers INTERNAL_ERROR for the same shape (measured)
+      const nodeCode = node.verdict.replace(/^ANSWERED /, '');
+      assert.ok(nodeCode === 'GOAWAY(PROTOCOL_ERROR)' || nodeCode === 'GOAWAY(INTERNAL_ERROR)',
         `node: ${label} -> ${node.verdict}`);
       assert.strictEqual(ours.verdict, 'ANSWERED GOAWAY(PROTOCOL_ERROR)',
         `h2lite: ${label} -> ${ours.verdict}, node ${node.verdict}`);
@@ -718,12 +729,14 @@ test('a PRIORITY frame is five octets, names a stream, and its payload is never 
   await both('PRIORITY depending on itself is dropped', undefined, true, (sock) => {
     sock.write(req(REQ));
     sock.write(pri(1, 1, 16));
-  }, 'ANSWERED');
+  }, 'ANSWERED', 350, 'GOAWAY(PROTOCOL_ERROR)');
   // node drops a PRIORITY on stream 0 silently -- the deviation h2spec http2/6.3 flags.
+  // The v20/22 bundle instead ends the connection with INTERNAL_ERROR (measured); the
+  // known deviation changes shape, it does not go away.
   const nodePri0 = await once(nodeHttp2, undefined, false, (sock) => {
     sock.write(pri(0, 1, 16));
   });
-  assert.strictEqual(nodePri0.verdict, 'nothing',
+  assert.ok(nodePri0.verdict === 'nothing' || nodePri0.verdict === 'GOAWAY(INTERNAL_ERROR)',
     `node: PRIORITY on stream 0 -> ${nodePri0.verdict} (the known node deviation)`);
   // h2lite follows RFC 9113 6.3 and ends the connection instead.
   const h2Pri0 = await once(h2lite, undefined, false, (sock) => {
@@ -748,7 +761,7 @@ test('a HEADERS priority block is five octets, and a stream may not depend on it
     await both('HEADERS for stream 1 depending on stream 1', undefined, false, (sock) => {
       sock.write(frame(f.HEADERS, EOH | EOS | f.F_PRIORITY, 1,
         Buffer.concat([dep32(1, 255), REQ])));
-    }, 'GOAWAY(PROTOCOL_ERROR)');
+    }, 'GOAWAY(PROTOCOL_ERROR)', 350, 'GOAWAY(INTERNAL_ERROR)');
   });
 
 // ---- a frame naming a stream whose message the peer already ended (5.1, 6.1, 8.2) ------------
@@ -775,7 +788,7 @@ test('DATA and HEADERS after the peer\'s END_STREAM end the connection with STRE
       (sock) => {
         sock.write(frame(f.HEADERS, EOH | EOS, 1, REQ));
         sock.write(frame(f.HEADERS, EOH | EOS, 1, Buffer.from(litField('x', 'y'))));
-      }, 'GOAWAY(STREAM_CLOSED)');
+      }, 'GOAWAY(STREAM_CLOSED)', 350, 'GOAWAY(INTERNAL_ERROR)');
     // The shapes that keep the stream in the table, because nothing answers it and an open local
     // half holds the record: the state check decides them, not any history, so the verdict does not
     // depend on how the frames were batched (probe cases U10, U11).
@@ -799,7 +812,9 @@ test('DATA and HEADERS after the peer\'s END_STREAM end the connection with STRE
       const send = (sock) => sock.write(Buffer.concat(frames));
       const node = await once(nodeHttp2, undefined, true, send);
       const ours = await once(h2lite, undefined, true, send);
-      assert.strictEqual(node.verdict.replace(/^ANSWERED /, ''), 'GOAWAY(STREAM_CLOSED)',
+      // the v20/22 bundle answers INTERNAL_ERROR for the same shape (measured)
+      const nodeCode = node.verdict.replace(/^ANSWERED /, '');
+      assert.ok(nodeCode === 'GOAWAY(STREAM_CLOSED)' || nodeCode === 'GOAWAY(INTERNAL_ERROR)',
         `node: ${label} -> ${node.verdict}`);
       assert.strictEqual(ours.verdict, 'ANSWERED GOAWAY(STREAM_CLOSED)',
         `h2lite: ${label} -> ${ours.verdict}, node ${node.verdict}`);
@@ -986,16 +1001,16 @@ test('content-length that is too long is the connection\'s problem', async () =>
   await both('content-length 1, one DATA of 4 octets with END_STREAM', undefined, 'read', (sock) => {
     sock.write(frame(f.HEADERS, EOH, 1, Buffer.concat([REQ, CL(1)])));
     sock.write(frame(f.DATA, EOS, 1, Buffer.from('test', 'ascii')));
-  }, 'GOAWAY(INTERNAL_ERROR)');
+  }, 'GOAWAY(INTERNAL_ERROR)', 350, 'RST(PROTOCOL_ERROR)');
   await both('content-length 100, DATA 60 + DATA 60', undefined, 'read', (sock) => {
     sock.write(frame(f.HEADERS, EOH, 1, Buffer.concat([REQ, CL(100)])));
     sock.write(frame(f.DATA, 0, 1, Buffer.alloc(60, 0x61)));
     sock.write(frame(f.DATA, EOS, 1, Buffer.alloc(60, 0x61)));
-  }, 'GOAWAY(INTERNAL_ERROR)');
+  }, 'GOAWAY(INTERNAL_ERROR)', 350, 'RST(PROTOCOL_ERROR)');
   await both('content-length 0 with a body of 4 octets', undefined, 'read', (sock) => {
     sock.write(frame(f.HEADERS, EOH, 1, Buffer.concat([REQ, CL(0)])));
     sock.write(frame(f.DATA, EOS, 1, Buffer.from('test', 'ascii')));
-  }, 'GOAWAY(INTERNAL_ERROR)');
+  }, 'GOAWAY(INTERNAL_ERROR)', 350, 'RST(PROTOCOL_ERROR)');
   // The control, and the reason the counter is compared with `>` and not with `!==`: a body of
   // exactly what was promised is the ordinary POST.
   await both('content-length 4, DATA 4 with END_STREAM', undefined, 'read', (sock) => {

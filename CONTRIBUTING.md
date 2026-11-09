@@ -9,11 +9,19 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
 ## 1. Running and extending the test suite
 
 * `npm test` = server suite + client suite
-  (`node --test --test-timeout=60000 test/*.test.js && node --test --test-timeout=60000 test/client/`).
+  (`node --test --test-timeout=120000 test/*.test.js && node --test --test-timeout=120000
+  test/client/*.test.js`). The client suite is passed as an unquoted glob, not as the
+  directory: node 22's runner fails a directory argument with MODULE_NOT_FOUND while
+  node 20's does not expand runner-side globs, so the shell has to do it (the server
+  suite was already a glob).
   **The timeout is load-bearing**: without it, a test waiting for a response that a newly
   added correct refusal never sends hangs the whole suite silently instead of failing.
   Keep it when invoking `node --test` by hand (the local convention is
-  `--test-timeout=20000` for a faster signal).
+  `--test-timeout=20000` for a faster signal). It is 120 s, not 60: on node 20/22 the
+  broken http2 `server.close()` (nodejs/node#57611, never backported) costs the deadline
+  path ~1 s per GOAWAY shape in the differential files, and `test/inbound-limits.test.js`
+  alone runs ~73 s there. The guard property is unchanged -- a hung test still fails, a
+  minute later.
 * Expect the test count to grow; a change that reduces it needs a reason in the commit
   message.
 * The suite is differential by design. Most files run the *same* application script
