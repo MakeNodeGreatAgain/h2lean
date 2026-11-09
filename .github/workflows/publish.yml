@@ -1,0 +1,52 @@
+# Publish to npm when a version tag is pushed (v0.1.0 -> tag v0.1.0).
+#
+# The stock GitHub template this replaces had three problems for this repo:
+#   - it published on a manually created GitHub release, which says nothing
+#     about which commit is on npm; a pushed version tag is the exact pointer;
+#   - it ran `npm ci` in the publish job -- the tarball is lib/ + index.js
+#     ("files" in package.json), it needs no install at all;
+#   - it used a long-lived NODE_AUTH_TOKEN secret. npm's OIDC trusted
+#     publishing (npm >= 11.5, node >= 22 here) needs no secret: GitHub signs
+#     the publish with a short-lived id-token and npm attaches a provenance
+#     statement (the "built by GitHub Actions" badge on npmjs).
+#
+# Fallback, if OIDC is not wanted: drop `permissions`, `--provenance` and
+# NODE_AUTH_TOKEN below, set registry-url as is, and put a granular npm
+# access token (Automation type) into the repo secret NPM_TOKEN.
+name: npm publish
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines is >=20; the suite is measured against the newest line.
+        node-version: [20, 22, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC: npm verifies the publish came from this repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
