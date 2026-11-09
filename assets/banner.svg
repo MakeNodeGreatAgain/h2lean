@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">h2lite — Speed, secured.</title>
+  <desc id="description">README banner for h2lite, a pure JavaScript HTTP/2 server and client for Node.js with a native node:http2-compatible API. An aerodynamic closed portal and speed trails express extreme performance and a secure data channel.</desc>
+  <defs>
+    <linearGradient id="background" x1="80" y1="48" x2="1518" y2="466" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101D31"/>
+      <stop offset="0.48" stop-color="#091321"/>
+      <stop offset="1" stop-color="#050B14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="990" y1="410" x2="1450" y2="76" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2DD4BF"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+    <linearGradient id="portal-fill" x1="1160" y1="98" x2="1450" y2="422" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B2D46"/>
+      <stop offset="0.55" stop-color="#0C1829"/>
+      <stop offset="1" stop-color="#07101C"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="890" y1="250" x2="1270" y2="250" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" stop-opacity="0"/>
+      <stop offset="0.68" stop-color="#22D3EE" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#67E8F9" stop-opacity="0.9"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1300 238) rotate(90) scale(310 390)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#94A3B8" stroke-opacity="0.055"/>
+    </pattern>
+    <clipPath id="panel-clip">
+      <rect x="24" y="24" width="1552" height="452" rx="42"/>
+    </clipPath>
+  </defs>
+
+  <!-- A self-contained dark panel stays consistent in either GitHub theme. -->
+  <rect x="24" y="24" width="1552" height="452" rx="42" fill="url(#background)" stroke="#64748B" stroke-opacity="0.7" stroke-width="2"/>
+  <g clip-path="url(#panel-clip)">
+    <rect x="24" y="24" width="1552" height="452" fill="url(#grid)"/>
+    <rect x="24" y="24" width="1552" height="452" fill="url(#glow)"/>
+    <path d="M24 25H1576" stroke="url(#accent)" stroke-width="3" opacity="0.8"/>
+    <path d="M805 24L646 476M1025 24L866 476M1245 24L1086 476M1465 24L1306 476" stroke="#67E8F9" stroke-opacity="0.035" stroke-width="1"/>
+
+    <!-- Long horizontal trails give the portal a clear direction of travel. -->
+    <path d="M896 145H1268" stroke="url(#trail)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M842 218H1250" stroke="url(#trail)" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+    <path d="M920 292H1258" stroke="url(#trail)" stroke-width="15" stroke-linecap="round" opacity="0.52"/>
+    <path d="M1000 352H1274" stroke="url(#trail)" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+  </g>
+
+  <!-- Brand lockup. -->
+  <g transform="translate(88 69)">
+    <g transform="translate(7 0) skewX(-10)">
+      <rect x="3" y="0" width="48" height="64" rx="15" fill="#0A1424" stroke="#CBD5E1" stroke-width="2.5"/>
+      <rect x="8" y="5" width="38" height="54" rx="11" stroke="url(#accent)" stroke-width="1.5"/>
+    </g>
+    <text x="27" y="38" text-anchor="middle" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="25" font-style="italic" font-weight="900" letter-spacing="-2">h2</text>
+  </g>
+  <text x="158" y="113" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="56" font-weight="800" letter-spacing="-2.5">h2<tspan fill="#22D3EE">lite</tspan></text>
+  <text x="326" y="108" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="16" letter-spacing="2.5">NODE.JS / HTTP2</text>
+
+  <!-- Value proposition: short enough to survive README downscaling. -->
+  <text x="88" y="240" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="76" font-weight="850" letter-spacing="-3">SPEED, SECURED.</text>
+  <text x="91" y="296" fill="#B8C5D6" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="26" font-weight="450">Pure JavaScript HTTP/2 server &amp; client — built to outrun C.</text>
+
+  <g transform="translate(88 338)">
+    <rect width="344" height="56" rx="16" fill="#22D3EE" fill-opacity="0.08" stroke="#22D3EE" stroke-opacity="0.45"/>
+    <path d="M23 28H39M31 20V36" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round"/>
+    <text x="55" y="36" fill="#CFFAFE" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="19" font-weight="600" letter-spacing="0.5">NATIVE node:http2 API</text>
+  </g>
+  <g transform="translate(450 338)">
+    <rect width="250" height="56" rx="16" fill="#94A3B8" fill-opacity="0.055" stroke="#94A3B8" stroke-opacity="0.22"/>
+    <path d="M23 31L29 36L40 21" stroke="#67E8F9" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="55" y="36" fill="#D7E0EB" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="18" font-weight="600" letter-spacing="0.5">SERVER + CLIENT</text>
+  </g>
+
+  <!-- Large aerodynamic portal, matching the standalone mark. -->
+  <g transform="translate(1024 42) scale(0.8)">
+    <g transform="translate(36 0) skewX(-10)">
+      <rect x="86" y="48" width="344" height="416" rx="78" fill="url(#portal-fill)" stroke="#CBD5E1" stroke-width="7"/>
+      <rect x="101" y="63" width="314" height="386" rx="64" stroke="url(#accent)" stroke-width="4" opacity="0.85"/>
+      <path d="M306 49H350C399 49 430 83 430 128V384C430 429 399 463 350 463H245L306 49Z" fill="#22D3EE" opacity="0.045"/>
+    </g>
+    <path d="M145 158H183L174 211C191 187 211 176 236 176C269 176 282 197 273 229L249 323H209L232 233C238 216 232 208 219 208C199 208 183 224 177 248L160 323H120L145 158Z" fill="#F8FAFC"/>
+    <path d="M273 207C283 177 308 158 343 158C383 158 403 181 394 213C387 239 367 256 340 275L315 292H376L369 323H263L270 294L326 252C345 238 355 225 359 213C363 200 356 192 342 192C326 192 315 201 309 216L273 207Z" fill="url(#accent)"/>
+  </g>
+
+  <text x="1456" y="434" text-anchor="end" fill="#7E91A9" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" letter-spacing="2">FAST / SECURE / LITE</text>
+</svg>

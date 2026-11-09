@@ -1,0 +1,23 @@
+# Editor and OS noise
+.vscode/
+.DS_Store
+
+# Generated artifacts. Everything here is rebuilt on demand: the TLS fixture pair
+# by test/fixtures-tls.js (openssl, self-signed, CN=localhost) and the h2load
+# request bodies by bench/h2load.js. Committing the key would put a private key in
+# the repository for no benefit.
+out/
+profs/
+profs2/
+*.cpuprofile
+
+# The client benchmark's nghttpd docroot, rewritten on every run.js spawn
+bench/client/dir/
+
+# Dependency directory. The library itself has no runtime dependencies; the only entries here
+# are devDependencies (today fast-xml-parser for tools/check-h2spec.js), which the shipped code
+# never requires.
+node_modules/
+
+# The mutation harness's single-instance lock, written while a sweep runs
+tools/.mutate-guards.lock

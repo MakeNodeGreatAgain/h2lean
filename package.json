@@ -1,0 +1,46 @@
+{
+  "name": "h2lite",
+  "version": "0.1.0",
+  "description": "Pure-JavaScript HTTP/2 for Node.js — a drop-in node:http2 replacement (server and client, h2c and TLS) with zero dependencies",
+  "main": "index.js",
+  "files": [
+    "lib/",
+    "index.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MakeNodeGreatAgain/h2lite.git"
+  },
+  "keywords": [
+    "http2",
+    "h2c",
+    "node:http2",
+    "nghttp2",
+    "server",
+    "client",
+    "pure-javascript",
+    "undici",
+    "fastify",
+    "http",
+    "grpc"
+  ],
+  "scripts": {
+    "test": "node --test --test-timeout=60000 test/*.test.js && node --test --test-timeout=60000 test/client/",
+    "test:server": "node --test --test-timeout=60000 test/*.test.js",
+    "test:client": "node --test --test-timeout=60000 test/client/",
+    "lint": "eslint .",
+    "spec": "node tools/check-h2spec.js",
+    "bench:showcase": "node bench/showcase/matrix.js",
+    "bench:client": "node bench/client/matrix.js",
+    "gen": "node tools/gen-hpack-data.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "fast-xml-parser": "^5.12.0",
+    "uWebSockets.js": "github:uNetworking/UWebSockets.js#v20.70.0",
+    "@eslint/js": "^10.0.1"
+  }
+}

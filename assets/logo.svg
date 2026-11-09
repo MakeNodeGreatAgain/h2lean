@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">h2lite logo</title>
+  <desc id="description">An aerodynamic closed portal with an italic h2 monogram and speed trails, representing a fast, secure HTTP/2 channel.</desc>
+  <defs>
+    <linearGradient id="portal-fill" x1="128" y1="76" x2="390" y2="442" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#16253B"/>
+      <stop offset="0.52" stop-color="#0A1424"/>
+      <stop offset="1" stop-color="#050B14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="106" y1="350" x2="400" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2DD4BF"/>
+      <stop offset="0.5" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="28" y1="228" x2="174" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" stop-opacity="0"/>
+      <stop offset="0.55" stop-color="#22D3EE" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Velocity trails remain visible on both light and dark surfaces. -->
+  <path d="M48 174H151" stroke="url(#trail)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M28 228H137" stroke="url(#trail)" stroke-width="12" stroke-linecap="round" opacity="0.82"/>
+  <path d="M58 282H143" stroke="url(#trail)" stroke-width="8" stroke-linecap="round" opacity="0.62"/>
+
+  <!-- A continuous forward-leaning frame evokes a secure data channel. -->
+  <g transform="translate(36 0) skewX(-10)">
+    <rect x="86" y="48" width="344" height="416" rx="78" fill="url(#portal-fill)" stroke="#CBD5E1" stroke-width="8"/>
+    <rect x="101" y="63" width="314" height="386" rx="64" stroke="url(#accent)" stroke-width="3" opacity="0.78"/>
+    <path d="M306 49H350C399 49 430 83 430 128V384C430 429 399 463 350 463H245L306 49Z" fill="#22D3EE" opacity="0.035"/>
+  </g>
+
+  <!-- Custom geometric h2 lettering: slanted forward to imply momentum. -->
+  <path d="M145 158H183L174 211C191 187 211 176 236 176C269 176 282 197 273 229L249 323H209L232 233C238 216 232 208 219 208C199 208 183 224 177 248L160 323H120L145 158Z" fill="#F8FAFC"/>
+  <path d="M273 207C283 177 308 158 343 158C383 158 403 181 394 213C387 239 367 256 340 275L315 292H376L369 323H263L270 294L326 252C345 238 355 225 359 213C363 200 356 192 342 192C326 192 315 201 309 216L273 207Z" fill="url(#accent)"/>
+
+</svg>
