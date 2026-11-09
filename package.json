@@ -9,7 +9,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MakeNodeGreatAgain/h2lean.git"
+    "url": "git+https://github.com/MakeNodeGreatAgain/h2lite.git"
   },
   "keywords": [
     "http2",
