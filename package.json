@@ -1,5 +1,5 @@
 {
-  "name": "h2lite",
+  "name": "h2lean",
   "version": "0.1.0",
   "description": "Pure-JavaScript HTTP/2 for Node.js — a drop-in node:http2 replacement (server and client, h2c and TLS) with zero dependencies",
   "main": "index.js",
@@ -9,7 +9,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MakeNodeGreatAgain/h2lite.git"
+    "url": "git+https://github.com/MakeNodeGreatAgain/h2lean.git"
   },
   "keywords": [
     "http2",
