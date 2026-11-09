@@ -331,8 +331,7 @@ for h2lite alone, and each has both a parity assertion and an anchor in
 
 ## 9. Commits
 
-* Commit **after each logically significant change**, as soon as it is verified — do not
-  wait to be asked, and do not batch unrelated work into one commit. Verified means
+* Commit **after each logically significant change**, as soon as it is verified and the user has confirmed — do not batch unrelated work into one commit. Verified means
   `npm test` green **and `npm run lint` clean**, plus the mutation harness re-run for any
   touched guard anchor. A red or half-finished state is not a trigger.
 * Message: `type: imperative summary` (`fix:`, `perf:`, `test:`, `docs:`, `refactor:`,
