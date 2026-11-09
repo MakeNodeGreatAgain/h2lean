@@ -39,8 +39,9 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
     "fast-xml-parser": "^5.12.0",
-    "uWebSockets.js": "github:uNetworking/UWebSockets.js#v20.70.0",
-    "@eslint/js": "^10.0.1"
+    "uWebSockets.js": "github:uNetworking/UWebSockets.js#v20.70.0"
   }
 }
