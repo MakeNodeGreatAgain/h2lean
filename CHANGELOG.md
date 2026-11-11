@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.1.1] — 2026-11-11
+
+### Fixed
+
+- The 0.1.0 tarball was cut before the `h2lean` name had reached the shipped code: the
+  not-implemented error carried `err.code === 'ERR_H2LITE_NOT_IMPLEMENTED'` and the
+  published `repository.url` still pointed at the previous repository. Both are
+  `h2lean` now, so a handler that switches on the code has to match the new string
+  (`lib/client.js`, `lib/server.js`).
+
 ## [0.1.0] — 2026-11-09
 
 First public release.
