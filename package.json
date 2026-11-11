@@ -45,6 +45,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.14.0",
+    "fastify": "^5.12.8",
     "fast-xml-parser": "^5.12.0",
     "uWebSockets.js": "github:uNetworking/UWebSockets.js#v20.70.0"
   }
