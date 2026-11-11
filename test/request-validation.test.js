@@ -3,7 +3,7 @@
 // RFC 9113 8.1/8.2.2/8.3/8.5 says what a request must contain; it does not say what a
 // server does about it. The matrix below was measured against a live node:http2 server
 // (which runs nghttp2's lib/nghttp2_http.c) rather than written from the RFC, and it is
-// asserted here twice: once against h2lite and once against node, so that a change in
+// asserted here twice: once against h2lean and once against node, so that a change in
 // either shows up as a failing test instead of as a silent difference.
 //
 // Why this is a security file and not a correctness one: whatever sits in front of us
@@ -23,7 +23,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { listen, closeServer } = require('./diff-harness');
 
 function frame(type, flags, sid, payload) {
@@ -134,7 +134,7 @@ const CASES = [
 async function drive(impl, block) {
   const srv = impl.createServer();
   const reached = [];
-  // node and h2lite give the handler the same arguments here, so one listener serves
+  // node and h2lean give the handler the same arguments here, so one listener serves
   // both -- which is the point of the comparison, not an accident of it
   srv.on('stream', (stream, headers) => {
     reached.push(Object.keys(headers).join(','));
@@ -194,7 +194,7 @@ async function drive(impl, block) {
 const expect = (v, reached) => (v === 'headers+data' && reached.length === 1 ? 'serve'
   : v === 'rst:1' && reached.length === 0 ? 'rst' : `unexpected:${v}:${reached.length}`);
 
-for (const impl of [{ name: 'h2lite', mod: h2lite }, { name: 'node', mod: require('node:http2') }]) {
+for (const impl of [{ name: 'h2lean', mod: h2lean }, { name: 'node', mod: require('node:http2') }]) {
   test(`${impl.name}: ${CASES.length} inbound request cases answer as measured`, async () => {
     const fails = [];
     for (const [name, block, want] of CASES) {
@@ -215,7 +215,7 @@ test('the two implementations hand the application the same fields', async () =>
   // request still has to arrive.
   const block = Buffer.concat([GOOD, lit('bad name', 'x'), lit('x-ok', '1'),
     lit('x-cr', '1\rb')]);
-  const lite = await drive(h2lite, block);
+  const lite = await drive(h2lean, block);
   const node = await drive(require('node:http2'), block);
   assert.strictEqual(lite.reached[0], node.reached[0]);
   assert.ok(lite.reached[0].includes('x-ok'), 'the good field survives');
@@ -229,7 +229,7 @@ test('a dropped field stays dropped when the shape is served from the cache', as
   // without decoding at all. If the entry kept the pre-drop list, the illegal name
   // would come back on every request after the first -- one request of testing that
   // would never show it.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const reached = [];
   srv.on('stream', (stream, headers) => {
     reached.push(Object.keys(headers));
@@ -265,7 +265,7 @@ test('a refused shape is refused again on the same connection', async () => {
   // The verdict is cached with the request shape (that is what keeps the check off the
   // per-request cost path). The cache must not turn a second copy of a bad request into
   // an accepted one, and a good shape must still serve after a bad one was cached.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const reached = [];
   srv.on('stream', (stream, headers) => {
     reached.push(headers[':path']);
@@ -322,7 +322,7 @@ test('a trailer block may not contain pseudo-headers', async () => {
   // RFC 9113 8.1: the fields after the header section are regular fields only. Checked
   // separately because the trailer block goes through the same decode and a different
   // branch of the validator (nothing is cached for it).
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const reached = [];
   srv.on('stream', (stream, _headers) => {
     reached.push('stream');

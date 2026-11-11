@@ -1,15 +1,15 @@
 // M2 client-stream surface: the per-request view an application holds. Everything
 // here is a differential -- the same server drives node's ClientHttp2Stream and
-// h2lite's, and the observable shapes (response headers, trailers, the 'close' that
+// h2lean's, and the observable shapes (response headers, trailers, the 'close' that
 // waits for both halves of the Duplex) must agree. The stream is a stream.Duplex,
-// which is the load-bearing node compatibility point (AGENTS.md 10: h2lite's SERVER
+// which is the load-bearing node compatibility point (AGENTS.md 10: h2lean's SERVER
 // stream is an EventEmitter, but a client stream the app reads and pipes has to be a
 // real Duplex or the `req.pipe(res)` idiom breaks).
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const { listen, closeServer } = require('../diff-harness');
 
 function startServer(handler) {
@@ -78,7 +78,7 @@ test('response headers: :status is a number and set-cookie is an array, as node 
     });
     try {
       const node = await observe(http2, port, '/');
-      const lite = await observe(h2lite, port, '/');
+      const lite = await observe(h2lean, port, '/');
       assert.strictEqual(lite.response[':status'], 201);
       assert.strictEqual(typeof lite.response[':status'], 'number',
         ':status must be a number, like node reports it');
@@ -102,7 +102,7 @@ test('trailers arrive on the "trailers" event and the event order matches node',
     });
     try {
       const node = await observe(http2, port, '/');
-      const lite = await observe(h2lite, port, '/');
+      const lite = await observe(h2lean, port, '/');
       assert.deepStrictEqual(lite.trailers, node.trailers, 'trailer fields differ');
       assert.deepStrictEqual(lite.trailers, { 'x-checksum': 'abc123', 'x-count': '3' });
       assert.deepStrictEqual(lite.events, node.events,
@@ -125,7 +125,7 @@ test('the Duplex "close" fires once, after both halves of the exchange are done'
     });
     try {
       const node = await observe(http2, port, '/', 'payload');
-      const lite = await observe(h2lite, port, '/', 'payload');
+      const lite = await observe(h2lean, port, '/', 'payload');
       assert.strictEqual(lite.closed, true);
       assert.strictEqual(lite.events.filter((e) => e === 'close').length, 1,
         'close must fire exactly once');
@@ -172,7 +172,7 @@ test('an inbound RST_STREAM surfaces as a stream error, not a session crash',
         }, 300);
       });
       const node = await capture(http2);
-      const lite = await capture(h2lite);
+      const lite = await capture(h2lean);
       // node reports the reset on the stream; the session stays alive.
       assert.strictEqual(node.sessionError, null, 'node resets on the stream, not the session');
       assert.strictEqual(lite.sessionError, null,

@@ -4,9 +4,9 @@
 //   node tools/probe-chunking.js
 //
 //  * download: a raw server answers with a DATA frame whose payload is cut in two,
-//    and the client counts the chunks node:http2 and h2lite deliver;
+//    and the client counts the chunks node:http2 and h2lean deliver;
 //  * upload: a raw client sends a request whose DATA payload is cut in two, and
-//    the server counts the chunks node:http2 and h2lite hand to the handler.
+//    the server counts the chunks node:http2 and h2lean hand to the handler.
 //
 // The verdict decides what a straddling payload may be handed over as. Node
 // delivers it in the pieces it arrived in -- one per read -- so a frame-atomic
@@ -15,13 +15,13 @@
 // single view either: the zero-copy form is one view per read.
 //
 // Measured on node v26.12.1: node's server and node's client both deliver
-// [5, 16379] for a payload cut in two -- two chunks, one per read -- and h2lite
+// [5, 16379] for a payload cut in two -- two chunks, one per read -- and h2lean
 // delivers the same after the change (before it, [16384]).
 //
 // Two details in the raw server are load-bearing rather than decorative:
 //
 //  * its SETTINGS go out as soon as the connection is up, not after the request.
-//    h2lite's client holds its first request back until the peer's SETTINGS have
+//    h2lean's client holds its first request back until the peer's SETTINGS have
 //    been applied (lib/client-session.js, _enqueue), so a server that answers
 //    SETTINGS only once it has seen the request deadlocks against it. Node's
 //    client does not wait, but a real server sends SETTINGS first anyway.
@@ -31,7 +31,7 @@
 
 const net = require('node:net');
 const nodeHttp2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 const PAYLOAD = 16384;
@@ -129,11 +129,11 @@ function downloadNode(port) {
   });
 }
 
-function downloadH2lite(port) {
+function downloadH2lean(port) {
   return new Promise((resolve, reject) => {
-    const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+    const sess = h2lean.connect(`http://127.0.0.1:${port}`);
     const timer = setTimeout(() => {
-      sess.destroy(); reject(new Error('h2lite download timeout'));
+      sess.destroy(); reject(new Error('h2lean download timeout'));
     }, 2000);
     sess.on('error', reject);
     const req = sess.request({ ':path': '/' });
@@ -167,13 +167,13 @@ function uploadServer(impl) {
   const rawPort = raw.address().port;
   for (let i = 0; i < 3; i++) {
     const node = await downloadNode(rawPort);
-    const ours = await downloadH2lite(rawPort);
+    const ours = await downloadH2lean(rawPort);
     console.log('download round', i,
-      'node:', JSON.stringify(node), 'h2lite:', JSON.stringify(ours));
+      'node:', JSON.stringify(node), 'h2lean:', JSON.stringify(ours));
   }
   raw.close();
 
-  for (const [who, impl] of [['node', nodeHttp2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', nodeHttp2], ['h2lean', h2lean]]) {
     const { srv, chunks } = await uploadServer(impl);
     const port = srv.address().port;
     await rawClientUpload(port);

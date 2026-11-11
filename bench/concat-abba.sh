@@ -13,7 +13,7 @@ one() { # name concat?(0/1) extra-args
   name=$1; cc=$2; shift 2
   if [ "$cc" = "1" ]; then arm=concat; else arm=writev; fi
   line=$(CONCAT=$cc GC=1 PRELOAD=bench/concat-write.js node bench/h2load.js \
-      --server=h2lite --api=stream --clients=64 --threads=8 --duration=8 "$@" 2>&1)
+      --server=h2lean --api=stream --clients=64 --threads=8 --duration=8 "$@" 2>&1)
   cpu=$(echo "$line" | sed -n 's/.*cpuPerReq=\([0-9.]*\)us.*/\1/p')
   rps=$(echo "$line" | sed -n 's/.*h2load:  \([0-9.]*\) req\/s.*/\1/p')
   gcpct=$(echo "$line" | sed -n 's/.*gcPct=\([0-9.]*\)%.*/\1/p')

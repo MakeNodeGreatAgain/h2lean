@@ -1,7 +1,7 @@
-// Server role for the benchmark: the real h2lite server, handler-shaped exactly
+// Server role for the benchmark: the real h2lean server, handler-shaped exactly
 // like bench/prof-h2.js so the two processes differ only in what parses HTTP/2.
-//   ROLE=server node bench/h2lite-h2.js
-const h2lite = require('../index');
+//   ROLE=server node bench/h2lean-h2.js
+const h2lean = require('../index');
 
 const PORT = Number(process.env.PORT || 8443);
 const DURATION_MS = Number(process.env.DURATION || 10000);
@@ -75,7 +75,7 @@ const compatHandler = (req, res) => {
   res.end(RESP_BODY);
 };
 
-const make = TLS ? h2lite.createSecureServer : h2lite.createServer;
+const make = TLS ? h2lean.createSecureServer : h2lean.createServer;
 const server = API === 'compat' ? make(OPTIONS, compatHandler) : make(OPTIONS);
 // OUTSTAT=1 counts writes, their sizes, and everything the outbound path copies,
 // on this real fan-out rather than on the four streams tools/probe-outbound.js uses.
@@ -105,7 +105,7 @@ server.listen(PORT, '127.0.0.1', () => {
     const cpu = process.cpuUsage(cpu0);
     const wall = (Number(process.hrtime.bigint()) - t0) / 1e6;
     const cpuMs = (cpu.user + cpu.system) / 1000;
-    console.log(`[h2lite ${API}${SHARE ? ' share' : ''}] req=${handled} wall=${wall.toFixed(0)}ms ` +
+    console.log(`[h2lean ${API}${SHARE ? ' share' : ''}] req=${handled} wall=${wall.toFixed(0)}ms ` +
                 `cpu=${cpuMs.toFixed(0)}ms ` +
                 `rps=${Math.round(handled / (wall / 1000))} ` +
                 `cpuPerReq=${(cpuMs * 1000 / handled).toFixed(2)}us ` +

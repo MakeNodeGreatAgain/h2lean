@@ -7,26 +7,26 @@
 // known -- which is also what RFC 9113 6.5.2 asks for, since a peer that will
 // not take the stream answers REFUSED_STREAM.
 //
-// h2lite's client used to hold the first request back until the peer's SETTINGS
+// h2lean's client used to hold the first request back until the peer's SETTINGS
 // had been applied. That cost a round trip on every session's first request:
 // measured against a raw server that delays its SETTINGS by 200 ms, node's
-// request HEADERS arrived at 5 ms while h2lite's arrived at 225 ms
+// request HEADERS arrived at 5 ms while h2lean's arrived at 225 ms
 // (tools/probe-client-first.js).
 //
 // The window is the other half of the same rule. RFC 9113 6.9.2: a stream runs
 // on the peer's SETTINGS_INITIAL_WINDOW_SIZE, and a later SETTINGS shifts the
-// windows of the streams that are open by then. A stream that h2lite opens
+// windows of the streams that are open by then. A stream that h2lean opens
 // later -- one that waited for a concurrency slot -- is not among them, so the
 // window it runs on is taken where it is opened, not where the stream object
 // was built. Measured against a raw server that lowers the window to 1024 while
 // the second request waits for a slot: node sends 1024 octets on that stream,
-// and h2lite used to send 65 519 (out/probe-client-park.js).
+// and h2lean used to send 65 519 (out/probe-client-park.js).
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const f = require('../../lib/frames');
 
 const SETTINGS_DELAY = 300; // how late the peer's SETTINGS arrive
@@ -205,8 +205,8 @@ async function parkedBody(impl) {
 
 test('the first request leaves in the first flight, before the peer\'s SETTINGS', async () => {
   const node = await firstFlight(http2);
-  const ours = await firstFlight(h2lite);
-  for (const [who, st] of [['node', node], ['h2lite', ours]]) {
+  const ours = await firstFlight(h2lean);
+  for (const [who, st] of [['node', node], ['h2lean', ours]]) {
     assert.ok(st.headAt !== null, `${who}: the request never arrived`);
     assert.ok(st.settingsAt !== null, `${who}: the SETTINGS never arrived`);
     assert.ok(st.headAt < st.settingsAt,
@@ -216,10 +216,10 @@ test('the first request leaves in the first flight, before the peer\'s SETTINGS'
 
 test('a stream opened after the peer\'s SETTINGS runs on the peer\'s window', async () => {
   const node = await parkedBody(http2);
-  const ours = await parkedBody(h2lite);
+  const ours = await parkedBody(h2lean);
   // Stream 1 carries the first request's body, stream 3 the second one. The
   // second one is the one that waited for a slot while the window was lowered.
-  for (const [who, data] of [['node', node], ['h2lite', ours]]) {
+  for (const [who, data] of [['node', node], ['h2lean', ours]]) {
     assert.strictEqual(data[1], 16, `${who}: the first request's body (${JSON.stringify(data)})`);
     assert.strictEqual(data[3], WINDOW,
       `${who}: the second request ran on a window of ${data[3]} octets (${JSON.stringify(data)})`);

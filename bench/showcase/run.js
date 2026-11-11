@@ -5,7 +5,7 @@
 // server process, which is the protocol-fair metric (raw req/s depends on
 // whatever else the machine is doing).
 //
-//   node bench/showcase/run.js --arm="h2lite compat" --body=262144 --duration=6 --port=8970
+//   node bench/showcase/run.js --arm="h2lean compat" --body=262144 --duration=6 --port=8970
 //
 // The protocol decides h2load's flags: HTTP/1.1 arms run `-p http/1.1` (h2load
 // speaks HTTP/1.1 with keep-alive); HTTP/2 arms run its cleartext h2c default.

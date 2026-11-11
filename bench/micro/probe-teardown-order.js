@@ -1,4 +1,4 @@
-// The compat teardown order, node against h2lite.
+// The compat teardown order, node against h2lean.
 //
 //   node bench/micro/probe-teardown-order.js
 //
@@ -14,7 +14,7 @@
 // before the response finishes". This prints what each stack actually does.
 'use strict';
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 
 const GET = { ':method': 'GET', ':path': '/x', ':scheme': 'http', ':authority': 'localhost' };
 
@@ -60,9 +60,9 @@ function scenario(impl, kind) {
 (async () => {
   for (const kind of ['normal', 'reset', 'answered', 'unread']) {
     const native = await scenario(http2, kind);
-    const ours = await scenario(h2lite, kind);
+    const ours = await scenario(h2lean, kind);
     const same = JSON.stringify(native) === JSON.stringify(ours) ? '  ' : '<>';
     console.log(`${kind.padEnd(9)} node  : ${JSON.stringify(native)}`);
-    console.log(`${kind.padEnd(9)} h2lite: ${JSON.stringify(ours)} ${same}`);
+    console.log(`${kind.padEnd(9)} h2lean: ${JSON.stringify(ours)} ${same}`);
   }
 })();

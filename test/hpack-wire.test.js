@@ -28,7 +28,7 @@ const REQ_HEADERS = {
 const RESP_FIELDS = [
   [':status', '200', false],
   ['content-type', 'text/plain; charset=utf-8', false],
-  ['server', 'h2lite/0.1', false],
+  ['server', 'h2lean/0.1', false],
   ['x-long-header', 'y'.repeat(200), false],
   ['set-cookie', 'sid=abc123; Path=/; HttpOnly', true] // sensitive -> never index
 ];
@@ -159,7 +159,7 @@ test('hpack encoder output is accepted by nghttp2', async () => {
   for (const h of responses) {
     assert.strictEqual(h[':status'], 200);
     assert.strictEqual(h['content-type'], 'text/plain; charset=utf-8');
-    assert.strictEqual(h.server, 'h2lite/0.1');
+    assert.strictEqual(h.server, 'h2lean/0.1');
     assert.strictEqual(h['x-long-header'], 'y'.repeat(200));
     assert.deepStrictEqual(h['set-cookie'], ['sid=abc123; Path=/; HttpOnly']);
   }

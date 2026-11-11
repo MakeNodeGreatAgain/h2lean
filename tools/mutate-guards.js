@@ -126,7 +126,7 @@ const anchors = [
     // then destroy after the flush), which puts the same octets on the wire. What end() is FOR is
     // the half-open read side node keeps (finishSessionClose ends the socket, resumes it, and does
     // not destroy it when the session was closed gracefully) so the peer's answer can still arrive;
-    // h2lite destroys instead, and that difference is AGENTS.md section 10's open problem, not a
+    // h2lean destroys instead, and that difference is AGENTS.md section 10's open problem, not a
     // test.
     what: 'a drained closing session lets the connection go (the peer sees a FIN)',
     from: '    this.socket.end();\n    this.destroy(NO_ERROR);',
@@ -255,7 +255,7 @@ const anchors = [
   },
 
   // ---- the frame-state and message-framing guards of RFC 9113 5/6/8 and RFC 7541 6.3 -------
-  // One anchor per rule the h2spec sweep used to fail for h2lite alone. Each is a condition
+  // One anchor per rule the h2spec sweep used to fail for h2lean alone. Each is a condition
   // turned off, never a body rewritten: the suite has to fail because the guard stopped
   // refusing, not because the harness could not find the code any more.
   {
@@ -381,7 +381,7 @@ const anchors = [
   // DATA and HEADERS that name a stream whose message the peer already ended are answered with a
   // connection error of type STREAM_CLOSED, whether the stream is still in the table (half-closed
   // (remote)) or has just left it (_ended): 5.1 reads the closed shape as "MAY ... as a connection
-  // error" and node -- the oracle -- makes no present/closed distinction here, so h2lite keeps its
+  // error" and node -- the oracle -- makes no present/closed distinction here, so h2lean keeps its
   // verdict (a stream error on the present shape is the other RFC reading, but it regressed h2spec's
   // DATA check). What is DISCARDED, not errored, is an id a reset ended or this side refused
   // (_isGone) and one the peer never opened (the skip branch): those are the memories below.

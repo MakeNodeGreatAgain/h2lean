@@ -24,7 +24,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { MAX_OUT_BATCH } = require('../lib/session');
 const { listen, request, closeServer } = require('./diff-harness');
 
@@ -62,7 +62,7 @@ function windowUpdate(sid, increment) {
 }
 
 test('a peer with a large window cannot grow the outbound queue past the cap', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let session = null;
   srv.on('session', (s) => {
     session = s;
@@ -79,15 +79,15 @@ test('a peer with a large window cannot grow the outbound queue past the cap', a
   // bytes, so wrapping it costs nothing and cannot miss a spike between two samples
   // the way polling the queue length would.
   let peak = 0;
-  const realFrame = h2lite.Http2Session.prototype._frame;
-  h2lite.Http2Session.prototype._frame = function (type, flags, sid, payload, owned) {
+  const realFrame = h2lean.Http2Session.prototype._frame;
+  h2lean.Http2Session.prototype._frame = function (type, flags, sid, payload, owned) {
     realFrame.call(this, type, flags, sid, payload, owned);
     if (this._outLen > peak) {
       peak = this._outLen;
     }
   };
   t.after(() => {
-    h2lite.Http2Session.prototype._frame = realFrame;
+    h2lean.Http2Session.prototype._frame = realFrame;
   });
 
   // DATA bytes per stream id, from a parser that keeps the tail of a partial frame:
@@ -192,7 +192,7 @@ test('a response larger than the batch ceiling still reaches the peer complete',
   // this is where it hangs.
   const SIZE2 = 3 * 1024 * 1024;
   const body = Buffer.alloc(SIZE2, 0x7a);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => {
     stream.respond({ ':status': 200, 'content-length': String(SIZE2) });
     stream.end(body);
@@ -220,7 +220,7 @@ test('a peer that stops reading still gets intact bytes when it resumes', async 
   // libuv reads the bytes we passed at its own moment, which can be long after the
   // frame that follows us was produced. Nothing here can observe that except a peer
   // that lets the socket fill up and then reads everything back.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => {
     // x-sid makes every header block unique to its stream. Without it the corruption
     // this test looks for is invisible: rewriting a queued block with the next one's
@@ -238,7 +238,7 @@ test('a peer that stops reading still gets intact bytes when it resumes', async 
   // Header blocks travel through the staging buffer, so they are the bytes a wrongly
   // reused buffer would corrupt first. Decoding each one is how that becomes visible:
   // the body counters alone stay correct while a HEADERS frame on the wire does not.
-  const decoder = new h2lite.HPack.Decoder(4096);
+  const decoder = new h2lean.HPack.Decoder(4096);
   const decoded = { seen: 0, wrong: '' };
   let pending = Buffer.alloc(0);
   function consume() {
@@ -353,7 +353,7 @@ test('two chunks in the outbound queue never cover the same bytes', async (t) =>
   // consequence, because the consequence is hard to catch on purpose: a loopback socket
   // normally takes the bytes before the next frame is produced, and then a broken
   // staging buffer ships a perfectly valid response.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => {
     stream.respond({ ':status': 200, 'content-length': String(SIZE) });
     stream.end(BODY);
@@ -366,8 +366,8 @@ test('two chunks in the outbound queue never cover the same bytes', async (t) =>
 
   const overlaps = [];
   let checks = 0;
-  const realFrame = h2lite.Http2Session.prototype._frame;
-  h2lite.Http2Session.prototype._frame = function (type, flags, sid, payload, owned) {
+  const realFrame = h2lean.Http2Session.prototype._frame;
+  h2lean.Http2Session.prototype._frame = function (type, flags, sid, payload, owned) {
     const r = realFrame.call(this, type, flags, sid, payload, owned);
     const q = this._outQ;
     checks++;
@@ -384,7 +384,7 @@ test('two chunks in the outbound queue never cover the same bytes', async (t) =>
     return r;
   };
   t.after(() => {
-    h2lite.Http2Session.prototype._frame = realFrame;
+    h2lean.Http2Session.prototype._frame = realFrame;
   });
 
   const all = [];
@@ -413,7 +413,7 @@ test('a stalled flood beyond the hold ceiling is refused with RST(REFUSED_STREAM
   // With k=9: 983041 + 8*1048576 + 9*1024 = 9380865 > 8388608, so the 10th HEADERS is refused.
   const PARK = 1024 * 1024;
   const parkBody = Buffer.alloc(PARK, 0x62);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let accepted = 0;
   srv.on('stream', (stream) => {
     accepted++;

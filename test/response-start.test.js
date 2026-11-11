@@ -7,9 +7,9 @@
 //     the write path, not in end(), which is what keeps HEADERS in front of DATA -- and DATA on
 //     a stream that has no headers yet is not a cosmetic ordering difference: RFC 9113 8.1 puts
 //     the response HEADERS before any content, so a strict peer has nothing to attach the DATA
-//     to. h2lite used to queue the body first and answer the headers after it.
+//     to. h2lean used to queue the body first and answer the headers after it.
 //   * an end() with NO body at all is where the two stacks part company: node puts nothing on
-//     the wire and leaves headersSent false, while h2lite answers 200 with an empty DATA/ES.
+//     the wire and leaves headersSent false, while h2lean answers 200 with an empty DATA/ES.
 //     Pinned below as a KNOWN DIVERGENCE, with the reason in AGENTS.md section 10.
 //   * node also closes a stream whose request body nobody read (RST_STREAM(NO_ERROR) after the
 //     response). That is the second open item of section 10, so the transcripts here compare
@@ -20,7 +20,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
 const { Decoder } = require('../lib/hpack');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { closeServer } = require('./diff-harness');
 
@@ -142,17 +142,17 @@ function drive(impl, app) {
 
 // Both stacks, the same application script.
 async function both(app) {
-  return [await drive(nodeHttp2, app), await drive(h2lite, app)];
+  return [await drive(nodeHttp2, app), await drive(h2lean, app)];
 }
 
 test('the first write() sends the response headers ahead of the body', async () => {
   // The frame order is the whole point: HEADERS must precede every DATA. This is the shape
-  // that h2lite got wrong -- with the auto-respond only in end(), the queued body left first.
+  // that h2lean got wrong -- with the auto-respond only in end(), the queued body left first.
   const got = await both((stream) => {
     stream.write('x');
   });
   for (let i = 0; i < 2; i++) {
-    assert.strictEqual(got[i].wire, 'HEADERS/EH{:status=200} DATA(x)', `${i ? 'h2lite' : 'node'}: ${got[i].wire}`);
+    assert.strictEqual(got[i].wire, 'HEADERS/EH{:status=200} DATA(x)', `${i ? 'h2lean' : 'node'}: ${got[i].wire}`);
     assert.strictEqual(got[i].state, '{"headersSent":true,"rst":0}', got[i].state);
   }
 });
@@ -166,7 +166,7 @@ test('write() then end() keeps the headers first and closes with END_STREAM', as
     'HEADERS/EH{:status=200} DATA(x) DATA(body)/ES RST(0)', `node: ${got[0].wire}`);
   assert.strictEqual(got[1].wire,
     'HEADERS/EH{:status=200} DATA(x) DATA(body)/ES',
-    `h2lite ${got[1].wire} vs node ${got[0].wire}: the response frames must match`);
+    `h2lean ${got[1].wire} vs node ${got[0].wire}: the response frames must match`);
 });
 
 test('an explicit respond() is left alone', async () => {
@@ -179,13 +179,13 @@ test('an explicit respond() is left alone', async () => {
   assert.strictEqual(got[0].wire,
     'HEADERS/EH{:status=201} DATA(body)/ES RST(0)', `node: ${got[0].wire}`);
   assert.strictEqual(got[1].wire,
-    'HEADERS/EH{:status=201} DATA(body)/ES', `h2lite: ${got[1].wire}`);
+    'HEADERS/EH{:status=201} DATA(body)/ES', `h2lean: ${got[1].wire}`);
 });
 
 test('KNOWN DIVERGENCE: end() with no body answers 200 where node says nothing', async () => {
   // node finishes the writable side without the response ever starting: no HEADERS, no DATA,
   // no END_STREAM, and headersSent stays false -- the stream is let go only when the connection
-  // is. h2lite answers a plain 200 with an empty DATA/ES instead, because a stream the peer
+  // is. h2lean answers a plain 200 with an empty DATA/ES instead, because a stream the peer
   // never gets an answer on is only released by the idle timeout. Changing that means the
   // local-half-only close going through _endLocalSide() with no frame at all, which the
   // teardown traces have never covered; recorded in AGENTS.md §10 rather than done blind.
@@ -194,6 +194,6 @@ test('KNOWN DIVERGENCE: end() with no body answers 200 where node says nothing',
   });
   assert.strictEqual(got[0].wire, '(nothing)', `node: ${got[0].wire}`);
   assert.strictEqual(got[0].state, '{"headersSent":false,"rst":0}', `node: ${got[0].state}`);
-  assert.strictEqual(got[1].wire, 'HEADERS/EH{:status=200} DATA()/ES', `h2lite: ${got[1].wire}`);
-  assert.strictEqual(got[1].state, '{"headersSent":true,"rst":0}', `h2lite: ${got[1].state}`);
+  assert.strictEqual(got[1].wire, 'HEADERS/EH{:status=200} DATA()/ES', `h2lean: ${got[1].wire}`);
+  assert.strictEqual(got[1].state, '{"headersSent":true,"rst":0}', `h2lean: ${got[1].state}`);
 });

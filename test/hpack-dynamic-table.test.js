@@ -9,7 +9,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const hdr = require('../lib/headers');
 const { Encoder } = require('../lib/hpack');
 const { listen, connect, request } = require('./diff-harness');
@@ -26,7 +26,7 @@ const SHAPES = {
 };
 
 function shapeServer() {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream, headers) => {
     const shape = SHAPES[headers[':path']] || SHAPES['/a'];
     // sendDate:false keeps the generated `date` out of this fixture: the tests below
@@ -63,7 +63,7 @@ function frame(type, flags, sid, payload) {
 // payload size and the fields as they came off the decoder it builds from our octets.
 async function driveRaw(port, paths) {
   const sock = net.connect(port, '127.0.0.1');
-  const decoder = new h2lite.HPack.Decoder(4096);
+  const decoder = new h2lean.HPack.Decoder(4096);
   const seen = [];
   let pending = Buffer.alloc(0);
   const done = new Promise((resolve) => {
@@ -210,7 +210,7 @@ test('the block cache does not swallow a dynamic table size update', () => {
   const frozen = Object.freeze({ ':status': 200, 'x-kind': 'alpha' });
   // The decoder follows the same blocks, so that its table is the encoder's table: a
   // block that names an index the decoder never heard of decodes to nothing.
-  const dec = new h2lite.HPack.Decoder(4096);
+  const dec = new h2lean.HPack.Decoder(4096);
   const decode = (buf) => {
     const flat = [];
     dec.decode(buf, 0, buf.length, flat);
@@ -291,7 +291,7 @@ test('a peer with no table room is never sent an insertion', () => {
   assert.strictEqual(enc.epoch, 0, 'and it was never churned');
   assert.ok(enc.cache.size > 0, 'the lines did get cached');
   assert.ok(session._blocks.get(frozen), 'the block did get cached');
-  const dec = new h2lite.HPack.Decoder(0);
+  const dec = new h2lean.HPack.Decoder(0);
   const flat = [];
   dec.decode(last, 0, last.length, flat);
   assert.deepStrictEqual(flat, [':status', '200', 'x-kind', 'alpha', 'x-again', 'beta']);

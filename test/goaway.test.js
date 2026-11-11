@@ -6,7 +6,7 @@
 //   * GOAWAY(NO_ERROR) begins a graceful shutdown: `session.close()` -- the session is closed,
 //     NOT destroyed, and the stream already in front of this side keeps its place. node's own
 //     comment on that branch is "No new streams permitted, but existing streams may close
-//     naturally on their own". h2lite destroyed every stream above the peer's lastStreamID,
+//     naturally on their own". h2lean destroyed every stream above the peer's lastStreamID,
 //     which closed a live request the moment the peer said goodbye.
 //   * close() does not end the socket while something is still being carried. Only once the
 //     session has nothing left to do does node let the connection go.
@@ -21,7 +21,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, connect, closeServer } = require('./diff-harness');
 
@@ -87,7 +87,7 @@ function frame(type, flags, sid, payload) {
 const REQ = Buffer.from([0x82, 0x84, 0x86, 0x01, 9, ...Buffer.from('localhost', 'latin1')]);
 
 test('GOAWAY(NO_ERROR) closes the session and leaves the open stream alone', async () => {
-  const got = await Promise.all([goodbye(nodeHttp2, 0), goodbye(h2lite, 0)]);
+  const got = await Promise.all([goodbye(nodeHttp2, 0), goodbye(h2lean, 0)]);
   // node, measured: the goodbye is reported, then reported again when the peer answers ours,
   // and nothing in between is torn down.
   const want = {
@@ -100,12 +100,12 @@ test('GOAWAY(NO_ERROR) closes the session and leaves the open stream alone', asy
     peer: 'goaway:0/1'
   };
   assert.deepStrictEqual(got[0], want, `node: ${JSON.stringify(got[0])}`);
-  assert.deepStrictEqual(got[1], want, `h2lite: ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
+  assert.deepStrictEqual(got[1], want, `h2lean: ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
 });
 
 test('a GOAWAY with an error code is reported as an error and answered with NO_ERROR', async () => {
   for (const code of [2, 11]) {
-    const got = await Promise.all([goodbye(nodeHttp2, code), goodbye(h2lite, code)]);
+    const got = await Promise.all([goodbye(nodeHttp2, code), goodbye(h2lean, code)]);
     // node, measured: stream 'error' then 'close', the session's own 'error' after them, the
     // session destroyed but never marked closed, and the peer given GOAWAY(NO_ERROR, 1).
     const want = {
@@ -120,7 +120,7 @@ test('a GOAWAY with an error code is reported as an error and answered with NO_E
     };
     assert.deepStrictEqual(got[0], want, `node(code=${code}): ${JSON.stringify(got[0])}`);
     assert.deepStrictEqual(got[1], want,
-      `h2lite(code=${code}): ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
+      `h2lean(code=${code}): ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
   }
 });
 
@@ -166,7 +166,7 @@ async function drainedAfterClose(impl) {
 }
 
 test('a session closed with a stream open ends when that stream does', async () => {
-  const got = await Promise.all([drainedAfterClose(nodeHttp2), drainedAfterClose(h2lite)]);
+  const got = await Promise.all([drainedAfterClose(nodeHttp2), drainedAfterClose(h2lean)]);
   // node's own measured shape: while the stream lives the connection is held open and the peer
   // sees nothing; when it goes, the session is destroyed AND the peer gets its FIN.
   const want = {
@@ -175,7 +175,7 @@ test('a session closed with a stream open ends when that stream does', async () 
   };
   assert.deepStrictEqual(got[0], want, `node: ${JSON.stringify(got[0])}`);
   assert.deepStrictEqual(got[1], want,
-    `h2lite ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
+    `h2lean ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
 });
 
 // The same close-then-drain with a peer that answers nothing, and the last stream finished
@@ -225,7 +225,7 @@ async function silentPeerDrain(impl) {
 
 // KNOWN DIVERGENCE, not an endorsement: this is the silent-peer case of AGENTS.md §10
 // ("Graceful close: who is allowed to finish it"). The request is complete, the session is
-// closed, the last stream is answered normally, and the peer says nothing back. h2lite then
+// closed, the last stream is answered normally, and the peer says nothing back. h2lean then
 // sits with nothing left to carry -- live streams 0, queued bytes 0, write callback delivered
 // -- and is never let go, because the only events that re-run the closing predicate are a
 // stream teardown that has already happened while bytes were still owed, and the peer's answer
@@ -237,10 +237,10 @@ async function silentPeerDrain(impl) {
 // Pinned in this shape rather than as a passing parity test on purpose: the fix is the decision
 // recorded in §10 (re-check the close once our own write has landed, or separate the `destroyed`
 // flag from the socket teardown the way node's finishSessionClose does), and both cost event-order
-// traces that agree with node today. When that decision is taken, the h2lite arm below becomes
+// traces that agree with node today. When that decision is taken, the h2lean arm below becomes
 // node's shape and the second assertion has to be rewritten to want it.
 test('a closing session whose last stream answered is not let go when the peer says nothing', async () => {
-  const got = await Promise.all([silentPeerDrain(nodeHttp2), silentPeerDrain(h2lite)]);
+  const got = await Promise.all([silentPeerDrain(nodeHttp2), silentPeerDrain(h2lean)]);
   assert.deepStrictEqual(got[0], {
     afterClose: { closed: true, destroyed: false, peer: [] },
     afterStream: { closed: true, destroyed: true, peer: ['fin'] }
@@ -248,7 +248,7 @@ test('a closing session whose last stream answered is not let go when the peer s
   assert.deepStrictEqual(got[1], {
     afterClose: { closed: true, destroyed: false, peer: [] },
     afterStream: { closed: true, destroyed: false, peer: [] }
-  }, `h2lite, as it behaves today: ${JSON.stringify(got[1])}`);
+  }, `h2lean, as it behaves today: ${JSON.stringify(got[1])}`);
 });
 
 // One live server session, handed to `act` after a request has arrived on it. The request is
@@ -283,8 +283,8 @@ test('goawayCode and goawayLastStreamID read NO_ERROR/0 before a goodbye arrives
   // node's getters are `state.goawayCode || NGHTTP2_NO_ERROR` and `... || 0`: the state field
   // starts as null and the property does not. An application asking a live session what it heard
   // must get 0, not null -- measured on a node server session with nothing received yet.
-  for (const impl of [nodeHttp2, h2lite]) {
-    const name = impl === h2lite ? 'h2lite' : 'node';
+  for (const impl of [nodeHttp2, h2lean]) {
+    const name = impl === h2lean ? 'h2lean' : 'node';
     const got = await withSession(impl, (s) => [s.goawayCode, s.goawayLastStreamID]);
     assert.deepStrictEqual(got, [0, 0], `${name}: got ${got}`);
   }
@@ -295,8 +295,8 @@ test('close() on a destroyed session does not turn it back into a closed one', a
   // closed=FALSE. close() bails when the session is already destroyed, so a graceful close is
   // not a way to undo a destroy -- and the flag stays out of reach of the code that writes the
   // GOAWAY and marks the session closed.
-  for (const impl of [nodeHttp2, h2lite]) {
-    const name = impl === h2lite ? 'h2lite' : 'node';
+  for (const impl of [nodeHttp2, h2lean]) {
+    const name = impl === h2lean ? 'h2lean' : 'node';
     const got = await withSession(impl, (s) => {
       s.destroy();
       s.close();
@@ -311,13 +311,13 @@ test('close() on a destroyed session does not turn it back into a closed one', a
 // request is split across two writes and the application destroys the session from inside the
 // HEADERS handler, so the GOAWAY is already sitting in the buffer behind it.
 //
-// h2lite does not need node's guard, because the parse loop does not get that far: _dispatch()
+// h2lean does not need node's guard, because the parse loop does not get that far: _dispatch()
 // answers with `this._open`, and the batch stops at the frame that destroyed the session. This
 // test pins that invariant -- which is why removing it is a caught mutation and the redundant
 // guard is not (an unreachable line cannot have a failing test).
 test('the read batch stops at the frame that destroyed the session', async () => {
   const seen = [];
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('session', (session) => {
     session.on('goaway', () => seen.push('goaway'));
     session.on('stream', (stream) => {
@@ -359,7 +359,7 @@ test('the read batch stops at the frame that destroyed the session', async () =>
 // had in flight calls it a protocol failure.
 //
 // node ends the socket before it destroys it (internal/http2/core.js, finishSessionClose), so
-// the peer reads a FIN. h2lite used to destroy the socket outright, which threw the goodbye
+// the peer reads a FIN. h2lean used to destroy the socket outright, which threw the goodbye
 // away and closed the connection with a reset whenever the write had not reached the OS yet --
 // under load that is what h2spec's http2/7 read as a failure, and the check passed on its own
 // but failed in the full conformance run (out/spec-current.txt against out/spec-teardown.txt).
@@ -397,10 +397,10 @@ async function goodbyeWithUnknownCode(impl) {
 }
 
 test("a peer's GOAWAY with an unknown error code ends the connection with a FIN, like node", async () => {
-  const got = await Promise.all([goodbyeWithUnknownCode(nodeHttp2), goodbyeWithUnknownCode(h2lite)]);
+  const got = await Promise.all([goodbyeWithUnknownCode(nodeHttp2), goodbyeWithUnknownCode(h2lean)]);
   assert.deepStrictEqual(got[0], ['fin'], `node: ${JSON.stringify(got[0])}`);
   assert.deepStrictEqual(got[1], ['fin'],
-    `h2lite: ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
+    `h2lean: ${JSON.stringify(got[1])} vs node ${JSON.stringify(got[0])}`);
 });
 
 // A fresh TCP connection to a port the server has promised to give up: true if it is accepted,
@@ -462,7 +462,7 @@ test('server.close() stops accepting connections while a busy session drains', a
     closeCbAfterDrain: true, closeCbAfterClientGone: true };
   // node 20/22 complete the close only once the client is gone as well: there the ended
   // request socket is not counted as the last connection (measured on v20.19.5 and
-  // v22.21.1 -- the callback arrives right after client.destroy()). h2lite follows the
+  // v22.21.1 -- the callback arrives right after client.destroy()). h2lean follows the
   // newer accounting; the node arm accepts either its version produces.
   const same = (a, b) => {
     try {
@@ -475,5 +475,5 @@ test('server.close() stops accepting connections while a busy session drains', a
   const nodeGot = await probe(nodeHttp2);
   assert.ok(same(nodeGot, want) || same(nodeGot, { ...want, closeCbAfterDrain: false }),
     `node: ${JSON.stringify(nodeGot)} matches neither the v24+ nor the v20/22 accounting`);
-  assert.deepStrictEqual(await probe(h2lite), want, 'h2lite');
+  assert.deepStrictEqual(await probe(h2lean), want, 'h2lean');
 });

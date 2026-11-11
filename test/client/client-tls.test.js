@@ -1,5 +1,5 @@
 // The client's TLS transport (h2s). Each test runs the same script against
-// node:http2's connect() and against h2lite's and compares the recordings, so
+// node:http2's connect() and against h2lean's and compares the recordings, so
 // what they assert is "the peer and the application observe the same thing",
 // not an expectation picked from the docs. The shapes measured off node
 // v26.12.1:
@@ -20,7 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const tls = require('node:tls');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const certificates = require('../fixtures-tls');
 const { listen } = require('../diff-harness');
 
@@ -74,7 +74,7 @@ async function roundtripRun(impl) {
 
 test('an https connect behaves like node', async () => {
   const node = await roundtripRun(http2);
-  const ours = await roundtripRun(h2lite);
+  const ours = await roundtripRun(h2lean);
   assert.deepStrictEqual(ours, node);
   // and the reference says what h2s is supposed to say
   assert.deepStrictEqual(node.sync, { encrypted: 'undefined', alpn: 'undefined' });
@@ -121,7 +121,7 @@ async function alpnOverrideRun(impl) {
 test('an application-supplied ALPN list cannot make the client offer http/1.1',
   async () => {
     const node = await alpnOverrideRun(http2);
-    const ours = await alpnOverrideRun(h2lite);
+    const ours = await alpnOverrideRun(h2lean);
     assert.deepStrictEqual(ours, node);
     assert.deepStrictEqual(node.events, ['connect alpn=h2', 'response', 'end']);
   });
@@ -161,7 +161,7 @@ async function failureRun(impl) {
 
 test('a failed handshake cancels the pending request the way node does', async () => {
   const node = await failureRun(http2);
-  const ours = await failureRun(h2lite);
+  const ours = await failureRun(h2lean);
   assert.deepStrictEqual(ours, node);
   assert.ok(!node.events.includes('connect'), 'connect fired over a broken handshake');
   assert.ok(node.events.includes('stream error ERR_HTTP2_STREAM_CANCEL'),

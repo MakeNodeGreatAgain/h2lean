@@ -13,7 +13,7 @@
 'use strict';
 const net = require('node:net');
 const f = require('../../lib/frames');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const nodeHttp2 = require('node:http2');
 const { listen } = require('../test/diff-harness');
 
@@ -88,7 +88,7 @@ function serve(impl) {
 }
 
 (async () => {
-  for (const [name, impl] of [['node', nodeHttp2], ['h2lite', h2lite]]) {
+  for (const [name, impl] of [['node', nodeHttp2], ['h2lean', h2lean]]) {
     const { srv, port } = await serve(impl);
     const one = await drive(port, (sock) => {
       sock.write(Buffer.concat([goaway(255), PING]));

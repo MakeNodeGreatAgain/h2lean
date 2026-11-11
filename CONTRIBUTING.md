@@ -1,4 +1,4 @@
-# CONTRIBUTING.md — contributor guide for h2lite
+# CONTRIBUTING.md — contributor guide for h2lean
 
 The rules that decide whether a change is accepted live in `AGENTS.md`; read that file
 first. This one carries the working detail behind its §6-§10: how to run and write tests,
@@ -25,9 +25,9 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
 * Expect the test count to grow; a change that reduces it needs a reason in the commit
   message.
 * The suite is differential by design. Most files run the *same* application script
-  against `node:http2` and against h2lite via `test/diff-harness.js` (`probe()`,
+  against `node:http2` and against h2lean via `test/diff-harness.js` (`probe()`,
   `listen()`, `connect()`, `request()`) and compare what both sides recorded. When adding
-  a test, prefer asserting node's measured value over asserting h2lite's own behaviour —
+  a test, prefer asserting node's measured value over asserting h2lean's own behaviour —
   a pinned string like `'stream,goaway:0/0,goaway:0/0'` with a comment saying it was read
   off node is the standard.
 * A late `'error'` event on a stream after the test body finished fails the file silently.
@@ -69,15 +69,15 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   nghttp2 object still holds memory. It kills the file process, so the symptom is a
   **test count below the known total** with one `✖ test/<file>.test.js` and no failing
   test inside it. It is GC-timing dependent and may not reproduce — re-run before
-  investigating — and it is not h2lite's bug: the native arm is the one being collected.
+  investigating — and it is not h2lean's bug: the native arm is the one being collected.
   Do not chase it as a regression; check `ℹ tests` against the expected number.
 * **A peer's answer to our GOAWAY is a race on both stacks**, not a property of either:
   node's session is destroyed when its graceful close completes (`internal/http2/core.js`:
-  `handle.ongracefulclosecomplete` → `kMaybeDestroy`), h2lite's when the GOAWAY is written
+  `handle.ongracefulclosecomplete` → `kMaybeDestroy`), h2lean's when the GOAWAY is written
   (`lib/session.js`: `close()` → `_maybeFinishClose()`), and the answer is read only if it
   lands in the window between. Measured with `tools/probe-goaway-echo.js`: node's outcome
   moves with the load — 40 of 40 rounds on an idle machine, 26 of 40 and 29 of 30 in two
-  loaded runs — while h2lite reported the echo in every round of every run. So
+  loaded runs — while h2lean reported the echo in every round of every run. So
   `test/event-order.test.js` drops that event outside its `'goaway'` scenario — the one
   where the event is the subject. Do not "restore" the strict comparison: the failure it
   produces is the clock's, not a divergence.
@@ -85,13 +85,13 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   rather than fail when the tool is missing — which means a green `npm test` says nothing
   about them:
   * `test/interop-external.test.js` drives `nghttp` and `curl` — clients on their own
-    nghttp2 build, written without knowledge of h2lite — against an h2lite server. The
-    differential suite cannot answer this question: every test in it compares h2lite with
+    nghttp2 build, written without knowledge of h2lean — against an h2lean server. The
+    differential suite cannot answer this question: every test in it compares h2lean with
     node, so anything the two agree on is accepted no matter how many other
     implementations reject it.
   * `npm run spec` (`tools/check-h2spec.js`) runs h2spec, the RFC 7540/7541 conformance
-    set, against node and h2lite on the same application script and prints the three-way
-    split. It exists because the tool is not node: a check only h2lite fails is a bug
+    set, against node and h2lean on the same application script and prints the three-way
+    split. It exists because the tool is not node: a check only h2lean fails is a bug
     here, while a check both fail is node's own deviation (or RFC 7540 wording RFC 9113
     changed), and parity says leave that alone. Run it after any change to the inbound or
     outbound frame path, on a machine that has the tool. **The middle bucket is not a
@@ -107,7 +107,7 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   * The JUnit report h2spec writes (`-j`) marks a failed **protocol** check as an
     `<error>` child, not a `<failure>` one; only the `generic/` and `hpack/` sections
     reach the code path that emits `<failure>`. Counting the latter alone reads a red run
-    as clean: measured on 2.6.0, the console said 22 of 146 for h2lite and the
+    as clean: measured on 2.6.0, the console said 22 of 146 for h2lean and the
     `<failure>`-only parse said 0 of 146. `failures()` reads the report with
     `fast-xml-parser` (the tool's one devDependency), counts both tags, keys each check by
     its `package=` + `classname=` (the testsuite owns `name=`), and cross-checks the total
@@ -125,7 +125,7 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
 The convention in one paragraph: the paired matrix is the unit of proof; every claim in
 `OPTIMIZATION.md` is itemised with its benchmark. The mechanics:
 
-* `GC=1 sh bench/matrix.sh <label>` writes `/tmp/mx-<label>/<case>.txt`. Every h2lite case
+* `GC=1 sh bench/matrix.sh <label>` writes `/tmp/mx-<label>/<case>.txt`. Every h2lean case
   is paired with the *same* case on `node:http2`. The native arm is the drift sensor:
   identical untouched native code moves 8–13% between runs, and per case it can move far
   more (the native 256 KB download arm has swung +32% while the small-GET pairs stayed
@@ -262,7 +262,7 @@ The convention in one paragraph: the paired matrix is the unit of proof; every c
 The one-line index is `AGENTS.md` §10. Do not "fix" any of these blind; each entry names
 the decision, the measurements and the pins. None of them is a to-do list.
 
-* **Graceful close: who is allowed to finish it.** h2lite's predicate is
+* **Graceful close: who is allowed to finish it.** h2lean's predicate is
   `_liveStreams === 0 && _outLen === 0 && _frozenLen === 0` (bytes handed to the socket
   with the write callback still owed) and it is re-run at `close()` and on a stream
   teardown. node's is `handle.hasPendingData()` — bytes still inside nghttp2, which its
@@ -270,7 +270,7 @@ the decision, the measurements and the pins. None of them is a to-do list.
   `setImmediate` ("Delay with setImmediate so we don't do it on the nghttp2 stack") and
   from nghttp2's `ongracefulclosecomplete`. The consequence is measured, not theoretical:
   close a session whose last stream is then answered normally, with a peer that says
-  nothing back, and node destroys it within milliseconds while h2lite sits with live
+  nothing back, and node destroys it within milliseconds while h2lean sits with live
   streams 0, queued bytes 0 and the callback delivered — forever
   (`test/goaway.test.js` pins both arms; `tools/probe-stream-teardown.js`, case
   `request-ended`, prints it). Two fixes were tried and both were measured, so this is a
@@ -280,7 +280,7 @@ the decision, the measurements and the pins. None of them is a to-do list.
   peer's. The third option is the structural one: node's `finishSessionClose` **does not
   destroy the socket of a gracefully closing session** — it ends it, `resume()`s it and
   waits for the peer, and `session.destroyed` is a state flag set in `closeSession()`, not
-  a statement about the socket. h2lite still conflates the two: the socket teardown now has
+  a statement about the socket. h2lean still conflates the two: the socket teardown now has
   node's shape (end, then destroy after the flush — AGENTS.md §8, anchor 15), but the read
   side does not, so the peer's answer to our GOAWAY cannot arrive. What is missing here is
   the predicate, not the teardown: nothing re-runs `_maybeFinishClose()` once the last
@@ -289,38 +289,38 @@ the decision, the measurements and the pins. None of them is a to-do list.
   is finished: `Http2Stream[kMaybeDestroy]()` checks "headersSent, server session, no
   trailers, `!state.didRead`, `readableFlowing === null`" and calls `stream.close()` from
   the writable side's `'finish'`. On the wire that is `RST_STREAM(NO_ERROR)` after the
-  response, and it is what releases the session's own closing predicate. h2lite has no
+  response, and it is what releases the session's own closing predicate. h2lean has no
   such rule: the stream stays live until the peer ends its half, so a peer that sends
   HEADERS without END_STREAM and no DATA holds a stream (and a `_liveStreams` slot) open
   indefinitely — only the idle timeout lets it go. Measured both sides with
   `tools/probe-stream-teardown.js` (`answer-only` versus `resume-then-answer`, which is
-  node's `didRead` boundary: reading the request stops the auto-close, and h2lite already
+  node's `didRead` boundary: reading the request stops the auto-close, and h2lean already
   agrees there). Fixing it means emitting the auto-close and its `RST_STREAM` on a path no
   trace covers today — a task of its own, not a switch. One measured consequence of
-  leaving it open: when such a peer resets the socket, h2lite reports
+  leaving it open: when such a peer resets the socket, h2lean reports
   `sessionError:ECONNRESET` because it still owns a live stream, while node — which closed
   the stream at the end of the response — reports nothing.
 * **An `end()` with no body on a stream that never responded.** node puts nothing on the
   wire: no HEADERS, no DATA, no END_STREAM, and `headersSent` stays false — the writable
-  side finishes and the stream is let go only when the connection is. h2lite answers `200`
+  side finishes and the stream is let go only when the connection is. h2lean answers `200`
   with an empty `DATA/ES`, because a stream the peer never gets an answer on is released
   only by the idle timeout. Pinned as a KNOWN DIVERGENCE in
   `test/response-start.test.js`, which `tools/probe-response-start.js` measures both arms
   for. Matching node means a local-half close with no frame at all, a shape no teardown
-  trace covers today. Two adjacent measured facts go with it: the auto-respond h2lite now
+  trace covers today. Two adjacent measured facts go with it: the auto-respond h2lean now
   shares with node belongs to the **write** path, not to `end()` (`write('x')` alone puts
-  HEADERS in front of the DATA — h2lite used to queue the body first), and node's
-  `Http2Stream` is a `Duplex`, so it emits `'finish'` on the stream object while h2lite's
+  HEADERS in front of the DATA — h2lean used to queue the body first), and node's
+  `Http2Stream` is a `Duplex`, so it emits `'finish'` on the stream object while h2lean's
   stream is an `EventEmitter` and does not.
 * **`GOAWAY` last-stream id for a frame refused before its stream was processed.** node
-  names the stream (last=1), h2lite names only streams it had reached (last=0). Pinned as
+  names the stream (last=1), h2lean names only streams it had reached (last=0). Pinned as
   a KNOWN DIVERGENCE in `test/inbound-limits.test.js`; both stacks keep the connection up,
   so it is a byte difference no client can act on. Measured on the whole family — an
   oversized HEADERS, an undecodable CONTINUATION, and a HPACK size update at the end of a
   block (h2spec hpack/4.2) — and it is the same shape in all three.
 * **An answer queued in the same read batch as a refusal goes out here and is discarded
   by node.** A handler that responds as soon as the stream opens has its HEADERS flushed
-  by h2lite even when a later frame in the batch breaks a message-framing rule; nghttp2
+  by h2lean even when a later frame in the batch breaks a message-framing rule; nghttp2
   drops the queued response and the peer sees only the reset. Measured with
   `tools/probe-inbound-limits.js` (cases M1, M1b, N1, N2, P6, P8 — three runs each, no
   variation): the **codes agree**, only whether a HEADERS reaches the peer differs. A
@@ -329,11 +329,11 @@ the decision, the measurements and the pins. None of them is a to-do list.
   written with `respond: 'read'`. Matching node means discarding outbound state at refuse
   time — the stream-object-lifetime and graceful-close conflation of the first two bullets,
   not a patch. Pinned as a KNOWN DIVERGENCE in `test/inbound-limits.test.js`. It is also
-  what leaves the two h2lite-only arms in `npm run spec` (http2/8.1.2.6, the
+  what leaves the two h2lean-only arms in `npm run spec` (http2/8.1.2.6, the
   `content-length` promise that does not equal the sum of several DATA frames, once over
   h2c and once over TLS): the spec target answers without reading (so the queued 200 is in
   the batch), and the frames the two stacks send for the shape are the SAME code —
-  `RST_STREAM(PROTOCOL_ERROR)` short, `GOAWAY(INTERNAL_ERROR)` long — only h2lite's
+  `RST_STREAM(PROTOCOL_ERROR)` short, `GOAWAY(INTERNAL_ERROR)` long — only h2lean's
   HEADERS reaches the tool first and node's does not. Re-run against a reading handler and
   the arm is green; the content-length accounting itself is at parity.
 * **The h2spec arms that both stacks fail are not ours to fix — do not bend the code to
@@ -344,7 +344,7 @@ the decision, the measurements and the pins. None of them is a to-do list.
   three of the four check wording RFC 9113 changed and the fourth checks a rule RFC 9113
   dropped, so the tool's expectation is not the RFC's.
 
-  | arm | what the tool sends | what the tool demands | what the current RFC says | node | h2lite |
+  | arm | what the tool sends | what the tool demands | what the current RFC says | node | h2lean |
   |---|---|---|---|---|---|
   | `http2/5.1: closed: Sends a DATA frame` | `HEADERS`(END_STREAM), **wait for the stream to close**, then `DATA` | "MUST treat this as a connection error of type STREAM_CLOSED" | §5.1 *closed*: "An endpoint **MAY** treat receipt of any other type of frame on a closed stream as a connection error of type STREAM_CLOSED" | discards it | discards it |
   | `http2/5.1: closed: Sends a HEADERS frame` | the same, with `HEADERS` | "connection error of type STREAM_CLOSED" | the same MAY | discards it | answers `GOAWAY(PROTOCOL_ERROR)` and closes |
@@ -365,14 +365,14 @@ the decision, the measurements and the pins. None of them is a to-do list.
   error the RFC permits passes the arm — only the silence cannot. Measured on both stacks
   in one session (`tools/probe-inbound-limits.js`, cases U1, U3, U6, K4): the
   `HEADERS`+`RST_STREAM`+`DATA` shape (U6) is answered `ACK` by node and `ACK ANSWERED` by
-  h2lite — no error frame on either; the `HEADERS`(END_STREAM)+`DATA` shape (U1) with the
+  h2lean — no error frame on either; the `HEADERS`(END_STREAM)+`DATA` shape (U1) with the
   two frames in separate reads is `ACK ANSWERED` on both and with them in one read
   `GOAWAY(5:STREAM_CLOSED)` on both; the self-dependent `PRIORITY` (K4) is `ACK ANSWERED`
   on both, the frame dropped. So there is nothing here to fix: a stack that answered the
   tool's expectation would end the connection on a frame the RFC lets it discard, and
   would do it where node stays silent. These arms are encoded in the `DOCUMENTED` map in
   `tools/check-h2spec.js`, so `npm run spec` reports them under "documented divergence"
-  and keeps them out of the h2lite-only count that drives the exit code; add the §5
+  and keeps them out of the h2lean-only count that drives the exit code; add the §5
   write-up before adding a key there.
 * **h2spec's `http2/5.1` 'half closed (remote): Sends a DATA frame' arm is a segmentation
   race on both stacks, not a verdict.** The tool writes `HEADERS`(END_STREAM) and then a
@@ -390,7 +390,7 @@ the decision, the measurements and the pins. None of them is a to-do list.
   and the run that separates them is a delay between the writes
   (`tools/probe-inbound-limits.js` case U1 with `GAP=40`), where both stacks answer
   `ACK ANSWERED` and nothing else. In the conformance runs the split is not stable
-  either: over five runs of the `http2/5.1` section on h2c, h2lite failed this arm in 2 of
+  either: over five runs of the `http2/5.1` section on h2c, h2lean failed this arm in 2 of
   5 and node in 3 of 5 (in the other two node runs it fails the neighbouring 'half closed
   (remote): HEADERS' one instead), while the three 'closed:' arms fail on both stacks in
   5 of 5. The `http2/6.1` 'DATA frame on the stream that is not in "open" or "half-closed
@@ -400,7 +400,7 @@ the decision, the measurements and the pins. None of them is a to-do list.
   deviations: it is the third thing that moves the full run's totals between runs.
 * **Which of two broken rules a header frame reports.** A CONTINUATION that is both over
   SETTINGS_MAX_FRAME_SIZE and not decodable as HPACK gets `GOAWAY(COMPRESSION_ERROR)` from
-  node and `GOAWAY(FRAME_SIZE_ERROR)` from h2lite: nghttp2 hands a header block to the
+  node and `GOAWAY(FRAME_SIZE_ERROR)` from h2lean: nghttp2 hands a header block to the
   decoder while its octets are still arriving, so the decoding failure is what the peer is
   told first, while `_allowFrame()` refuses on the length without reading the payload at
   all. When the oversized block IS valid HPACK both stacks answer FRAME_SIZE_ERROR, and
@@ -409,13 +409,13 @@ the decision, the measurements and the pins. None of them is a to-do list.
   decode — giving up the earliest refusal in the inbound path so that an error code a peer
   cannot act on matches octet for octet.
 * **Teardown event order.** For a request the application never read, node emits `req`'s
-  `'end'`/`'close'` before the response finishes; h2lite emits them as the stream is torn
+  `'end'`/`'close'` before the response finishes; h2lean emits them as the stream is torn
   down. All events fire; the order within the teardown turn differs. Documented in
   `lib/compat.js` and tolerated in `test/event-order.test.js` by exactly two allowances:
   the compat teardown tail is compared as a sorted **set** (`TEARDOWN_IGNORED` is empty —
   every event is present on both sides), and `normalize()` collapses a **repeated**
   `session.goaway`, because node's already-destroyed session never reports the peer's echo
-  of ours while h2lite is still reading it. Nothing else in any trace is forgiven; adding
+  of ours while h2lean is still reading it. Nothing else in any trace is forgiven; adding
   a third rule needs a reason written next to it.
 * `req.pause()`/`req.read()` do not slow the peer down: stream credit is released as the
   buffered body is consumed and connection credit in half-window steps, not per `read()`.

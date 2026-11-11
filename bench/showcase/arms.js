@@ -13,6 +13,6 @@ module.exports = {
   'uwebsockets':       { file: 'srv-uws-h1.js', proto: 'h1', label: 'uWebSockets (http1)', conn: 512, streams: 1, inflight: 512 },
   'node:http2 stream': { file: 'srv-node-h2-strm.js', proto: 'h2c', label: 'node:http2 (stream)', conn: 32, streams: 16, inflight: 512 },
   'node:http2 compat': { file: 'srv-node-h2-compat.js', proto: 'h2c', label: 'node:http2 (compat)', conn: 32, streams: 16, inflight: 512 },
-  'h2lite stream':     { file: 'srv-h2lite-strm.js', proto: 'h2c', label: 'h2lite (stream)', conn: 32, streams: 16, inflight: 512 },
-  'h2lite compat':     { file: 'srv-h2lite-compat.js', proto: 'h2c', label: 'h2lite (compat)', conn: 32, streams: 16, inflight: 512 }
+  'h2lean stream':     { file: 'srv-h2lean-strm.js', proto: 'h2c', label: 'h2lean (stream)', conn: 32, streams: 16, inflight: 512 },
+  'h2lean compat':     { file: 'srv-h2lean-compat.js', proto: 'h2c', label: 'h2lean (compat)', conn: 32, streams: 16, inflight: 512 }
 };

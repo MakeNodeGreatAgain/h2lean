@@ -18,14 +18,14 @@
 // read the first half. A read that coalesced both halves would leave the frame whole
 // and the test would pass without testing anything -- it can never fail spuriously.
 //
-// The event shape differs between the stacks -- node emits the payload alone, h2lite
+// The event shape differs between the stacks -- node emits the payload alone, h2lean
 // emits (ack, payload) -- so the reader is per stack and what is compared is the bytes.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, closeServer } = require('./diff-harness');
 
@@ -39,7 +39,7 @@ function frame(type, flags, sid, payload) {
 const PINGS = ['11111111', 'ABCDEFGH', '33333333', 'IJKLMNOP'];
 
 // The payload out of a 'ping' event. node hands it over alone (internal/http2/core.js,
-// onPing()); h2lite hands it over after the ack flag.
+// onPing()); h2lean hands it over after the ack flag.
 const readPing = (impl) => (impl === nodeHttp2 ? (p) => p : (ack, p) => p);
 
 // ---- server side ----------------------------------------------------------------
@@ -114,9 +114,9 @@ async function serverRun(impl) {
 test('a PING payload the application keeps does not change when the next frame is assembled',
   async () => {
     const node = await serverRun(nodeHttp2);
-    const ours = await serverRun(h2lite);
+    const ours = await serverRun(h2lean);
     assert.strictEqual(node.length, 4, 'node did not see the four PINGs');
-    assert.strictEqual(ours.length, 4, 'h2lite did not see the four PINGs');
+    assert.strictEqual(ours.length, 4, 'h2lean did not see the four PINGs');
     assert.ok(Buffer.isBuffer(ours[1]), 'the payload is not a Buffer');
     // The second PING is the one that was assembled, and the fourth is the one that
     // landed on its bytes: without a copy of its own, the payload the application
@@ -198,9 +198,9 @@ async function goawayRun(impl) {
 
 test('the GOAWAY debug data the application keeps does not change', async () => {
   const node = await goawayRun(nodeHttp2);
-  const ours = await goawayRun(h2lite);
+  const ours = await goawayRun(h2lean);
   assert.ok(node, 'node did not report the GOAWAY');
-  assert.ok(ours, 'h2lite did not report the GOAWAY');
+  assert.ok(ours, 'h2lean did not report the GOAWAY');
   assert.strictEqual(ours.toString('latin1'), DEBUG,
     'the debug data the application kept changed under it');
   assert.strictEqual(ours.toString('latin1'), node.toString('latin1'),
@@ -302,9 +302,9 @@ async function clientRun(impl) {
 test('the pong a ping callback keeps does not change when the next frame is assembled',
   async () => {
     const node = await clientRun(nodeHttp2);
-    const ours = await clientRun(h2lite);
+    const ours = await clientRun(h2lean);
     assert.strictEqual(node.length, 2, 'node did not answer the two pings');
-    assert.strictEqual(ours.length, 2, 'h2lite did not answer the two pings');
+    assert.strictEqual(ours.length, 2, 'h2lean did not answer the two pings');
     assert.ok(Buffer.isBuffer(ours[0]), 'the pong is not a Buffer');
     assert.strictEqual(ours[0].toString('latin1'), 'ABCDEFGH',
       'the pong the callback kept changed under it');
@@ -408,9 +408,9 @@ async function clientGoaway(impl) {
 
 test('the GOAWAY debug data a client keeps does not change', async () => {
   const node = await clientGoaway(nodeHttp2);
-  const ours = await clientGoaway(h2lite);
+  const ours = await clientGoaway(h2lean);
   assert.ok(node, 'node did not report the GOAWAY');
-  assert.ok(ours, 'h2lite did not report the GOAWAY');
+  assert.ok(ours, 'h2lean did not report the GOAWAY');
   assert.strictEqual(ours.toString('latin1'), DEBUG,
     'the debug data the application kept changed under it');
   assert.strictEqual(ours.toString('latin1'), node.toString('latin1'),

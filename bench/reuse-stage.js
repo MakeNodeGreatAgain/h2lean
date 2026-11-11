@@ -1,10 +1,10 @@
 // A measurement arm, not a feature: the outbound staging buffer is reused from one
 // batch to the next instead of being allocated per batch. The census in
 // out/alloc-count.js says that allocation is 1.01 per request and 1024 octets --
-// the largest single buffer h2lite makes per request, and the only one that a
+// the largest single buffer h2lean makes per request, and the only one that a
 // shared pool could remove without touching a byte the application can see.
 //
-//   PRELOAD=bench/reuse-stage.js node bench/h2load.js --server=h2lite --api=stream
+//   PRELOAD=bench/reuse-stage.js node bench/h2load.js --server=h2lean --api=stream
 //
 // The rule the reuse obeys is the one the library already states for a buffer that
 // goes into _outQ: it is the socket's until the write completes, and writes

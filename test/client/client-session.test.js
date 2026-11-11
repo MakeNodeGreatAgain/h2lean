@@ -10,7 +10,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const { listen, closeServer } = require('../diff-harness');
 
 // A server that advertises a specific SETTINGS block, answering a plain GET so the
@@ -39,7 +39,7 @@ test('remoteSettings reflect the server advertised SETTINGS, as node sees them',
       });
     });
     const nodeRS = await read(http2);
-    const liteRS = await read(h2lite);
+    const liteRS = await read(h2lean);
     // the two numbers under test, compared to what node's own client learned
     assert.strictEqual(liteRS.maxConcurrentStreams, nodeRS.maxConcurrentStreams);
     assert.strictEqual(liteRS.maxConcurrentStreams, 7);
@@ -54,7 +54,7 @@ test('pendingSettingsAck starts true and clears once the server acknowledges our
   async () => {
     const { srv, port } = await startServer(echo);
     try {
-      const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+      const sess = h2lean.connect(`http://127.0.0.1:${port}`);
       sess.on('error', () => {});
       assert.strictEqual(sess.pendingSettingsAck, true);
       // The peer acknowledges our SETTINGS with a SETTINGS frame carrying the ACK
@@ -92,7 +92,7 @@ test('SETTINGS_MAX_CONCURRENT_STREAMS gates how many streams open at once', asyn
   };
   const { srv, port } = await startServer(hold, { maxConcurrentStreams: max });
   try {
-    const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+    const sess = h2lean.connect(`http://127.0.0.1:${port}`);
     sess.on('error', () => {});
     // Fire the burst only once the limit is known, so the client -- like nghttp2 --
     // cannot be caught opening more than the peer permits before its SETTINGS land.
@@ -128,7 +128,7 @@ test('ping(cb) round-trips and the callback matches node\'s (err, duration, pong
         }));
       });
       const nodeShape = await call(http2);
-      const liteShape = await call(h2lite);
+      const liteShape = await call(h2lean);
       assert.strictEqual(liteShape.err, null);
       assert.strictEqual(liteShape.durType, nodeShape.durType, 'duration is not a number');
       assert.strictEqual(liteShape.pongIsBuffer, nodeShape.pongIsBuffer);
@@ -171,7 +171,7 @@ test('a server GOAWAY is reported with the same event shape node delivers', asyn
       }, 300);
     });
     const node = await capture(http2);
-    const lite = await capture(h2lite);
+    const lite = await capture(h2lean);
     assert.ok(node.event, 'node did not emit goaway (server harness broken?)');
     assert.deepStrictEqual(lite.event, node.event, 'goaway event shape differs from node');
     assert.strictEqual(typeof lite.goawayCode, 'number');
@@ -203,7 +203,7 @@ test('destroying an open stream sends an RST_STREAM the server observes', async 
   });
   const port = await listen(srv);
   try {
-    const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+    const sess = h2lean.connect(`http://127.0.0.1:${port}`);
     sess.on('error', () => {});
     const s = sess.request({ ':method': 'GET', ':path': '/hold' });
     s.on('error', () => {});

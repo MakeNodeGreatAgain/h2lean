@@ -1,7 +1,7 @@
 // How far does node let the CONNECTION receive window run down before it answers an upload with
 // WINDOW_UPDATE(sid 0)? The client sends DATA as fast as the connection window allows and records,
 // for every credit frame, how many body octets had gone out at that moment and how big the grant
-// was. h2lite is measured the same way, so the threshold in _creditConnection() is a compared
+// was. h2lean is measured the same way, so the threshold in _creditConnection() is a compared
 // number: measured on node 26, the grants come in steps of 32768 octets, half the 65535 window it
 // advertises. The upload also has to finish, which is the anti-deadlock half of the same number.
 //
@@ -9,7 +9,7 @@
 'use strict';
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 
 const REQ = Buffer.from([0x82, 0x84, 0x86, 0x01, 9, ...Buffer.from('localhost', 'latin1')]);
@@ -106,5 +106,5 @@ function run(label, impl) {
 
 (async () => {
   await run('node', nodeHttp2);
-  await run('h2lite', h2lite);
+  await run('h2lean', h2lean);
 })();

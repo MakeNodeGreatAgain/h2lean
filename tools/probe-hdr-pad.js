@@ -5,7 +5,7 @@
 // PROTOCOL_ERROR." A padded frame with an empty payload has no pad-length octet
 // at all, which is also malformed.
 //
-// The server is node's or h2lite's; the client is raw. Three shapes are tried:
+// The server is node's or h2lean's; the client is raw. Three shapes are tried:
 //   * a pad length larger than the payload that carries it;
 //   * a pad length equal to the rest of the payload (legal);
 //   * PADDED set on a frame with an empty payload.
@@ -14,7 +14,7 @@
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -79,9 +79,9 @@ function rawClient(port, headersPayload, headersFlags) {
   });
 }
 
-function h2liteServer(payload, flags) {
+function h2leanServer(payload, flags) {
   return new Promise((resolve) => {
-    const srv = h2lite.createServer();
+    const srv = h2lean.createServer();
     srv.on('stream', (stream) => {
       stream.on('error', () => {});
       stream.on('data', () => {});
@@ -136,9 +136,9 @@ async function nodeServer(payload, flags) {
   ];
   for (const c of cases) {
     const nodeSeen = await nodeServer(c.payload, c.flags);
-    const liteSeen = await h2liteServer(c.payload, c.flags);
+    const liteSeen = await h2leanServer(c.payload, c.flags);
     console.log(`--- ${c.name}`);
     console.log(`    node:   ${nodeSeen.join(' | ') || 'nothing'}`);
-    console.log(`    h2lite: ${liteSeen.join(' | ') || 'nothing'}`);
+    console.log(`    h2lean: ${liteSeen.join(' | ') || 'nothing'}`);
   }
 })();

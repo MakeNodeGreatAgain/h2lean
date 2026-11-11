@@ -1,7 +1,7 @@
-// M1 client round-trip: h2lite.connect() driven against servers it does not control.
+// M1 client round-trip: h2lean.connect() driven against servers it does not control.
 //
-// The whole differential suite up to now has h2lite on the SERVING side and an
-// external client knocking on it. This file inverts that: h2lite is the client, and
+// The whole differential suite up to now has h2lean on the SERVING side and an
+// external client knocking on it. This file inverts that: h2lean is the client, and
 // the question is whether the frames it puts on the wire -- preface, SETTINGS,
 // HEADERS with request pseudo-headers, flow-controlled DATA, WINDOW_UPDATE credit,
 // SETTINGS ACK -- are accepted by an independent stack and whether the answers come
@@ -20,7 +20,7 @@ const http2 = require('node:http2');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn, spawnSync } = require('node:child_process');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const { listen, closeServer } = require('../diff-harness');
 
 // A version line and a zero status is enough to know nghttpd is runnable; a machine
@@ -55,7 +55,7 @@ function startEchoServer() {
 }
 
 // One observable request through EITHER client implementation. `impl` is
-// `node:http2` or `h2lite`; both expose connect()/request() with the same surface,
+// `node:http2` or `h2lean`; both expose connect()/request() with the same surface,
 // which is the point of the drop-in promise. Everything the application can see about
 // the answer is captured in one plain object so the two arms can be deep-compared.
 // node hangs an internal `Symbol(kSensitiveHeaders)` off its header object; the
@@ -98,11 +98,11 @@ function grab(impl, port, headers, body) {
   });
 }
 
-test('GET round-trip: h2lite matches node\'s own client frame for frame', async () => {
+test('GET round-trip: h2lean matches node\'s own client frame for frame', async () => {
   const { srv, port } = await startEchoServer();
   try {
     const nodeOut = await grab(http2, port, { ':method': 'GET', ':path': '/' });
-    const liteOut = await grab(h2lite, port, { ':method': 'GET', ':path': '/' });
+    const liteOut = await grab(h2lean, port, { ':method': 'GET', ':path': '/' });
     assert.strictEqual(liteOut.data, 'hello world');
     assert.deepStrictEqual(liteOut.headers, nodeOut.headers,
       'response headers differ from what node observed');
@@ -117,7 +117,7 @@ test('POST round-trip: a body inside the initial window echoes back intact', asy
     const payload = 'ping';
     const headers = { ':method': 'POST', ':path': '/', 'content-type': 'text/plain' };
     const nodeOut = await grab(http2, port, headers, payload);
-    const liteOut = await grab(h2lite, port, headers, payload);
+    const liteOut = await grab(h2lean, port, headers, payload);
     assert.strictEqual(liteOut.data, 'echo:ping');
     assert.strictEqual(liteOut.headers['x-echo-len'], String(payload.length));
     assert.deepStrictEqual(liteOut.headers, nodeOut.headers);
@@ -136,7 +136,7 @@ test('large upload: a body past the initial window drives WINDOW_UPDATE flow con
       // that a DATA-before-HEADERS framing bug used to break with GOAWAY(INTERNAL_ERROR).
       const payload = 'x'.repeat(200000);
       const headers = { ':method': 'POST', ':path': '/', 'content-type': 'text/plain' };
-      const liteOut = await grab(h2lite, port, headers, payload);
+      const liteOut = await grab(h2lean, port, headers, payload);
       assert.strictEqual(liteOut.headers['x-echo-len'], String(payload.length),
         `server received ${liteOut.headers['x-echo-len']} of ${payload.length} octets`);
       assert.strictEqual(liteOut.data.length, 'echo:'.length + payload.length);
@@ -177,10 +177,10 @@ test('large download in sub-window pieces: receive credit returns in half-window
     const port = await listen(srv);
     try {
       const nodeOut = await grab(http2, port, { ':method': 'GET', ':path': '/' });
-      const liteOut = await grab(h2lite, port, { ':method': 'GET', ':path': '/' });
+      const liteOut = await grab(h2lean, port, { ':method': 'GET', ':path': '/' });
       assert.strictEqual(nodeOut.data.length, SIZE, 'node did not receive the whole body');
       assert.strictEqual(liteOut.data.length, SIZE,
-        `h2lite received ${liteOut.data.length} of ${SIZE} octets -- credit stalled`);
+        `h2lean received ${liteOut.data.length} of ${SIZE} octets -- credit stalled`);
       assert.strictEqual(liteOut.data, nodeOut.data);
     } finally {
       await closeServer(srv);
@@ -193,7 +193,7 @@ test('many sequential streams on one connection are matched to the right respons
     try {
       // A single session, several requests back to back: each must land its own DATA
       // on its own stream, with the stream id tracked correctly through the shared reader.
-      const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+      const sess = h2lean.connect(`http://127.0.0.1:${port}`);
       sess.on('error', () => {});
       const results = [];
       for (let i = 0; i < 8; i++) {
@@ -231,7 +231,7 @@ test('connect() fills the request pseudo-headers the application omitted', async
     // An empty header set must still be a valid GET / with :scheme and :authority added
     // from the session -- the same completion node performs, so `request()` with no
     // arguments behaves like node's.
-    const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+    const sess = h2lean.connect(`http://127.0.0.1:${port}`);
     sess.on('error', () => {});
     const s = sess.request({});
     const out = await new Promise((resolve, reject) => {
@@ -259,7 +259,7 @@ test('connect() fills the request pseudo-headers the application omitted', async
 // absolute docroot answered 404 even to nghttp's own reference client on this host), so
 // the child is spawned with cwd set to the docroot. The strict reference stack accepting
 // our exchange end to end -- preface, SETTINGS, HEADERS, the 200 body -- is the point.
-test('h2lite client speaks h2c to nghttpd and reads the served file',
+test('h2lean client speaks h2c to nghttpd and reads the served file',
   { skip: NGHTTPD ? false : 'nghttpd not installed' }, async () => {
     const docroot = path.join(__dirname, '..', '..', 'out', 'ngd-root');
     const served = 'nghttpd-static-body\n';
@@ -292,7 +292,7 @@ test('h2lite client speaks h2c to nghttpd and reads the served file',
     try {
       assert.ok(ready, `nghttpd did not come up: ${err}`);
       const out = await new Promise((resolve, reject) => {
-        const sess = h2lite.connect(`http://127.0.0.1:${port}`);
+        const sess = h2lean.connect(`http://127.0.0.1:${port}`);
         sess.on('error', reject);
         const s = sess.request({ ':method': 'GET', ':path': '/index.html' });
         let status, data = '';

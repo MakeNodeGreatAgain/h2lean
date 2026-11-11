@@ -1,10 +1,10 @@
 // How many buffers does ONE request allocate, and which line of lib/ allocates them?
 //
-//   node tools/probe-alloc-count.js [h2lite|node] [requests]
+//   node tools/probe-alloc-count.js [h2lean|node] [requests]
 //
 // The counter sits on Buffer's allocation methods, so it sees every buffer the
 // JavaScript layer makes -- and only that layer: node's http2 server does most of
-// its work inside nghttp2, where a JS-level counter cannot see it. The h2lite
+// its work inside nghttp2, where a JS-level counter cannot see it. The h2lean
 // number is therefore the whole of that server's cost, and the node number is
 // only the JS part of node's. Same rule as a profile: the C++ core is invisible.
 //
@@ -13,7 +13,7 @@
 //
 // Measured on 300 requests of a GET with a five-octet body (this session):
 //
-//   h2lite: 2.05 allocations per request, 1 050 octets
+//   h2lean: 2.05 allocations per request, 1 050 octets
 //     1.01/req   1 031 B   lib/session.js 504   the outbound staging buffer
 //     1.00/req       5 B   lib/stream.js 152    the application's own bytes
 //     0.02/req       0 B   lib/hpack.js 967     a cold encoder cache miss
@@ -28,7 +28,7 @@
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const which = process.argv[2] || 'h2lite';
+const which = process.argv[2] || 'h2lean';
 const N = Number(process.argv[3] || 300);
 
 const mod = which === 'node'

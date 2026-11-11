@@ -17,7 +17,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const MAX_PAYLOAD = 16384; // what we advertise as maxFrameSize
 
@@ -88,7 +88,7 @@ function sessionBuffers(session) {
 }
 
 test('a max-size frame split across reads is delivered intact and retained safely', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let session = null;
   srv.on('session', (s) => {
     session = s;
@@ -218,7 +218,7 @@ async function chunksSeen(impl) {
 }
 
 test('a payload cut across two reads arrives in pieces, like node\'s', async () => {
-  // The shape of the delivery is not h2lite's to choose. Node hands a payload to
+  // The shape of the delivery is not h2lean's to choose. Node hands a payload to
   // the application in the pieces it arrived in -- a frame whose payload was cut
   // in two reaches node's handler as two chunks (tools/probe-chunking.js) --
   // so a frame-atomic delivery would be a divergence from node in the one place
@@ -227,9 +227,9 @@ test('a payload cut across two reads arrives in pieces, like node\'s', async () 
   // compared is that both stacks split the payload, and that the bytes are the
   // same either way.
   const node = await chunksSeen(http2);
-  const ours = await chunksSeen(h2lite);
+  const ours = await chunksSeen(h2lean);
   assert.ok(node.length > 1, `node delivered the payload in ${node.length} piece(s)`);
-  assert.ok(ours.length > 1, `h2lite delivered the payload in ${ours.length} piece(s)`);
+  assert.ok(ours.length > 1, `h2lean delivered the payload in ${ours.length} piece(s)`);
   assert.deepStrictEqual(Buffer.concat(ours), body(MAX_PAYLOAD, 0));
 });
 
@@ -256,7 +256,7 @@ test('a padded payload that straddles two reads arrives without its padding', as
   ];
 
   for (const shape of shapes) {
-    const srv = h2lite.createServer();
+    const srv = h2lean.createServer();
     const delivered = new Promise((resolve) => {
       srv.on('stream', (stream) => {
         const kept = [];
@@ -301,7 +301,7 @@ test('a padded payload that straddles two reads arrives without its padding', as
     // The frame was not assembled: the payload arrives in the pieces it was read
     // in, so the padding was trimmed off the views rather than out of a copy.
     assert.ok(kept.length > 1,
-      `h2lite delivered the padded payload in ${kept.length} piece(s) (${shape.name})`);
+      `h2lean delivered the padded payload in ${kept.length} piece(s) (${shape.name})`);
   }
 });
 
@@ -309,7 +309,7 @@ test('retained chunks of a 70 KB upload stay intact (compat API, h2c)', async (t
   const SIZE = 70000;
   const payload = body(SIZE, 0);
   let result = null;
-  const srv = h2lite.createServer({}, (req, res) => {
+  const srv = h2lean.createServer({}, (req, res) => {
     const kept = [];
     req.on('data', (d) => kept.push(d));
     req.on('end', () => {

@@ -9,9 +9,9 @@
 //
 // RFC 9110 6.4.1 is what the field is for -- an origin server stamps the time it placed
 // the message into its mailbox -- and RFC 9113 8.2 treats it as an ordinary field, with
-// no HTTP/2-specific rule of its own. The reason this file exists is that h2lite's stream
+// no HTTP/2-specific rule of its own. The reason this file exists is that h2lean's stream
 // API used to send no date at all while its compat API did: two APIs of one library, and a
-// client that compares responses from `http2` and from `h2lite` saw a different field set.
+// client that compares responses from `http2` and from `h2lean` saw a different field set.
 //
 // The cost of the change is not the string, it is the cache: a block of frozen response
 // headers was cached without looking at the date, and a date-bearing block cached that way
@@ -24,7 +24,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { listen, closeServer } = require('./diff-harness');
 
 // RFC 9110 7.1.1.1 IMF-fixdate, which is what toUTCString() produces and what node sends.
@@ -58,7 +58,7 @@ async function collect(impl, handler, plan) {
   srv.on('error', () => {});
   const port = await listen(srv);
 
-  const decoder = new h2lite.HPack.Decoder(4096);
+  const decoder = new h2lean.HPack.Decoder(4096);
   const total = plan.reduce((n, b) => n + (b.blocks === undefined ? b.requests : b.blocks), 0);
   let sock = null;
   try {
@@ -159,7 +159,7 @@ function dateOf(response) {
   return response.fields.filter(([n]) => n === 'date');
 }
 
-for (const impl of [{ name: 'h2lite', mod: h2lite }, { name: 'node', mod: require('node:http2') }]) {
+for (const impl of [{ name: 'h2lean', mod: h2lean }, { name: 'node', mod: require('node:http2') }]) {
   // The cases node's own rule produces, measured against a live node server before the
   // behaviour was written here.
   const cases = [
@@ -235,7 +235,7 @@ test('frozen response headers keep the block cache and still move to the next se
   // carry the previous second on a busy loop. 150 ms gives the timer room and still lands
   // inside the same second it is being compared against.
   const wait = 1000 - (Date.now() % 1000) + 150;
-  const run = await collect(h2lite, handler, [{ requests: 10 }, { requests: 6, waitMs: wait }]);
+  const run = await collect(h2lean, handler, [{ requests: 10 }, { requests: 6, waitMs: wait }]);
   const first = run.slice(0, 10);
   const later = run.slice(10);
   const stamps = first.map((r) => dateOf(r)[0][1]);
@@ -293,7 +293,7 @@ test('a settled date-bearing shape stops being encoded at all', async () => {
   // Three lines per block (status, x-cached, date). Warm-up encodes the shape twice and
   // the rest are hits, so the expected total here is around 6-10 for 16 responses. A cache
   // that never hits encodes all of them: 48.
-  const { Encoder } = h2lite.HPack;
+  const { Encoder } = h2lean.HPack;
   const HEADERS = Object.freeze({ ':status': 200, 'x-cached': 'yes' });
   const handler = (s) => s.respond(HEADERS, { endStream: true });
   const real = Encoder.prototype.write;
@@ -304,7 +304,7 @@ test('a settled date-bearing shape stops being encoded at all', async () => {
   };
   let responses;
   try {
-    responses = await collect(h2lite, handler, [{ requests: 16 }]);
+    responses = await collect(h2lean, handler, [{ requests: 16 }]);
   } finally {
     Encoder.prototype.write = real;
   }

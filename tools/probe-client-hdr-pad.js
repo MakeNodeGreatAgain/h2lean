@@ -6,14 +6,14 @@
 // PROTOCOL_ERROR." A padded frame with an empty payload has no pad-length octet
 // at all, which is also malformed.
 //
-// The server is raw; the client is node's and h2lite's. Both sides are reported:
+// The server is raw; the client is node's and h2lean's. Both sides are reported:
 // what the client says (goaway, error, close) and what the server receives.
 //
 // Usage: node tools/probe-client-hdr-pad.js
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -71,7 +71,7 @@ function rawServer(payload, flags) {
 function run(impl, payload, flags) {
   return rawServer(payload, flags).then(({ srv, sockets, seen }) => new Promise((resolve) => {
     const url = `http://127.0.0.1:${srv.address().port}`;
-    const sess = impl === 'node' ? http2.connect(url) : h2lite.connect(url);
+    const sess = impl === 'node' ? http2.connect(url) : h2lean.connect(url);
     const said = [];
     sess.on('goaway', (code, _last) => {
       said.push(`goaway ${code}`);
@@ -118,11 +118,11 @@ function run(impl, payload, flags) {
   ];
   for (const c of cases) {
     const node = await run('node', c.payload, c.flags);
-    const lite = await run('h2lite', c.payload, c.flags);
+    const lite = await run('h2lean', c.payload, c.flags);
     console.log(`--- ${c.name}`);
     console.log(`    node   says: ${node.said.join(' | ') || 'nothing'}`);
     console.log(`    node   gets: ${node.seen.join(' | ') || 'nothing'}`);
-    console.log(`    h2lite says: ${lite.said.join(' | ') || 'nothing'}`);
-    console.log(`    h2lite gets: ${lite.seen.join(' | ') || 'nothing'}`);
+    console.log(`    h2lean says: ${lite.said.join(' | ') || 'nothing'}`);
+    console.log(`    h2lean gets: ${lite.seen.join(' | ') || 'nothing'}`);
   }
 })();

@@ -10,7 +10,7 @@
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 const N = Number(process.argv[2] || 200);
@@ -58,7 +58,7 @@ function openIdle(port, _impl) {
 async function run(impl) {
   const server = impl === 'node'
     ? http2.createServer((req, res) => res.end('ok'))
-    : h2lite.createServer((req, res) => res.end('ok'));
+    : h2lean.createServer((req, res) => res.end('ok'));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   process.stdout.write(`${impl}: listening on ${port}\n`);
@@ -83,7 +83,7 @@ async function run(impl) {
 }
 
 (async () => {
-  for (const impl of ['node', 'h2lite']) {
+  for (const impl of ['node', 'h2lean']) {
     await run(impl);
   }
   process.exit(0);

@@ -1,7 +1,7 @@
 // Which characters in an INBOUND field value make the field disappear?
 //
 //   node bench/micro/probe-value-matrix.js native
-//   node bench/micro/probe-value-matrix.js h2lite
+//   node bench/micro/probe-value-matrix.js h2lean
 //
 // One request per character, each on its own stream, each carrying one field
 // 'x-c' whose value is 'a' + <char> + 'b'. The handler prints what it saw, so
@@ -10,8 +10,8 @@
 const net = require('node:net');
 const f = require('../../lib/frames');
 
-const kind = process.argv[2] === 'h2lite' ? 'h2lite' : 'native';
-const impl = kind === 'h2lite' ? require('../../index') : require('node:http2');
+const kind = process.argv[2] === 'h2lean' ? 'h2lean' : 'native';
+const impl = kind === 'h2lean' ? require('../../index') : require('node:http2');
 
 const CHARS = [0x00, 0x01, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x1f,
   0x20, 0x7e, 0x7f, 0x80, 0xff];

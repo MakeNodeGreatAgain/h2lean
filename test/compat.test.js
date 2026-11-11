@@ -1,10 +1,10 @@
 // M6: the compat (req, res) layer. The interesting assertions are differential:
 // the same handler and the same client script run against node:http2 and against
-// h2lite, and the two observations must agree.
+// h2lean, and the two observations must agree.
 const test = require('node:test');
 const assert = require('node:assert');
 const { probe, request, nodeHttp2 } = require('./diff-harness');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const GET = {
   ':method': 'GET',
@@ -64,7 +64,7 @@ test('the request view and the response bytes match node exactly', async () => {
   const script = async (client) => settle(await request(client, GET));
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
 
   // the date is generated per second by each server, so the two probes can land on
   // either side of a second boundary -- sameResult() leaves it out and the format is
@@ -95,7 +95,7 @@ test('a request body is readable as a stream and matches node', async () => {
     client, { ...GET, ':method': 'POST' }, payload));
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
   sameResult(ours.result, native.result);
   assert.deepStrictEqual(ours.log, native.log);
   assert.strictEqual(ours.log[0].length, payload.length);
@@ -111,7 +111,7 @@ test('HEAD gets headers only, exactly like node', async () => {
     client, { ...GET, ':method': 'HEAD' }));
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
   assert.strictEqual(ours.log[0], 'HEAD');
   assert.strictEqual(ours.result.body, '');
   assert.deepStrictEqual(ours.result.headers, native.result.headers);
@@ -127,8 +127,8 @@ test('trailers arrive as a separate block, like node sends them', async () => {
   const script = async (client) => settle(await request(client, GET));
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
-  assert.ok(ours.result.trailers, 'h2lite must send a trailers block');
+  const ours = await probe(h2lean, handler, script);
+  assert.ok(ours.result.trailers, 'h2lean must send a trailers block');
   assert.strictEqual(ours.result.trailers['x-tail'], 'end-of-body');
   assert.deepStrictEqual(ours.result.trailers, native.result.trailers);
   assert.strictEqual(ours.result.body, 'body');
@@ -144,7 +144,7 @@ test('Expect: 100-continue produces an informational response', async () => {
     client, { ...GET, expect: '100-continue' }));
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
   sameResult(ours.result, native.result);
   assert.deepStrictEqual(ours.log, native.log);
   // node's client reports a 100 as 'continue'; the point is that both stacks put
@@ -203,15 +203,15 @@ test('statusCode and header validation match node', async () => {
   };
 
   const native = await outcomes(nodeHttp2);
-  const ours = await outcomes(h2lite);
+  const ours = await outcomes(h2lean);
   assert.strictEqual(ours.length, native.length);
   for (let i = 0; i < native.length; i++) {
-    assert.strictEqual(ours[i], native[i], `${attempts[i][0]}: node=${native[i]} h2lite=${ours[i]}`);
+    assert.strictEqual(ours[i], native[i], `${attempts[i][0]}: node=${native[i]} h2lean=${ours[i]}`);
   }
 });
 
 test('write(chunk) applies backpressure and resumes with drain', async () => {
-  const srv = h2lite.createServer((req, res) => {
+  const srv = h2lean.createServer((req, res) => {
     // 2 MB against a 64 KB window: write() must start returning false
     const big = Buffer.alloc(64 * 1024, 0x62);
     res.writeHead(200, { 'content-length': String(2 * 1024 * 1024) });
@@ -250,7 +250,7 @@ test('compat chunks stay valid long after the tick that delivered them', async (
   // hands over must not be recycled underneath it; waiting 20 ms here guarantees
   // the session has handled many more frames since.
   const payload = 'z'.repeat(40 * 1024);
-  const srv = h2lite.createServer(async (req, res) => {
+  const srv = h2lean.createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) {
       assert.ok(Buffer.isBuffer(chunk));
@@ -310,7 +310,7 @@ test('a peer reset reports "aborted" exactly while the response is still open', 
 
   for (const shape of ['unanswered', 'answered']) {
     const native = await probe(nodeHttp2, shapes[shape], script);
-    const ours = await probe(h2lite, shapes[shape], script);
+    const ours = await probe(h2lean, shapes[shape], script);
     // The trace is compared as a set, not in order: the peer's reset is sent
     // as an empty END_STREAM DATA frame followed by the RST_STREAM
     // (out/probe-client-endstream.js), and whether the two arrive in one read
@@ -320,7 +320,7 @@ test('a peer reset reports "aborted" exactly while the response is still open', 
     assert.deepStrictEqual([...ours.log].sort(), [...native.log].sort(),
       `events differ for '${shape}'`);
     // 'aborted' is reported before the request's 'close' on both stacks: node
-    // emits it from the stream's close callback, h2lite from its own.
+    // emits it from the stream's close callback, h2lean from its own.
     if (ours.log.includes('req.aborted')) {
       assert.ok(ours.log.indexOf('req.aborted') < ours.log.indexOf('req.close'),
         '"aborted" must be reported before the close');
@@ -339,9 +339,9 @@ test('a peer reset reports "aborted" exactly while the response is still open', 
 });
 
 test('createPushResponse reports that push is not implemented', async () => {
-  const srv = h2lite.createServer((req, res) => {
+  const srv = h2lean.createServer((req, res) => {
     res.createPushResponse({ 'content-type': 'text/plain' }, (err) => {
-      assert.strictEqual(err.code, 'ERR_H2LITE_NOT_IMPLEMENTED');
+      assert.strictEqual(err.code, 'ERR_H2LEAN_NOT_IMPLEMENTED');
       res.writeHead(200, { 'x-push': err.code });
       res.end();
     });
@@ -352,5 +352,5 @@ test('createPushResponse reports that push is not implemented', async () => {
   const res = await request(client, GET);
   client.destroy();
   srv.close();
-  assert.strictEqual(res.headers['x-push'], 'ERR_H2LITE_NOT_IMPLEMENTED');
+  assert.strictEqual(res.headers['x-push'], 'ERR_H2LEAN_NOT_IMPLEMENTED');
 });

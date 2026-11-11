@@ -48,7 +48,7 @@ eq('dot form did not set a prototype', Object.getPrototypeOf(dot), null);
 function filled(make) {
   const o = make();
   o['content-type'] = 'text/plain';
-  o.server = 'h2lite';
+  o.server = 'h2lean';
   o['0'] = 'zero';
   o[':status'] = 200;
   o['10'] = 'ten';

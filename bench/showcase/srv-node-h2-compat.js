@@ -1,6 +1,6 @@
 // Showcase arm: node:http2, the (req, res) compatibility API -- h2c. Same
 // responder as the stream arm, but reached through node's Http2ServerRequest/
-// Response compat layer, which is the surface h2lite aims to replace.
+// Response compat layer, which is the surface h2lean aims to replace.
 //
 //   PORT=8904 BODY=262144 DURATION=8000 node bench/showcase/srv-node-h2-compat.js
 const http2 = require('node:http2');

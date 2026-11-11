@@ -3,7 +3,7 @@
 // otherwise, nothing ever inserted, every field line cached from its first use. Run the
 // server through it to get a before/after pair from the same server script:
 //
-//   PRELOAD=bench/no-table.js node bench/h2load.js --server=h2lite --api=stream
+//   PRELOAD=bench/no-table.js node bench/h2load.js --server=h2lean --api=stream
 'use strict';
 const path = require('node:path');
 const hpack = require(path.join(__dirname, '..', 'lib', 'hpack'));

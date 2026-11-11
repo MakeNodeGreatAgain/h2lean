@@ -1,7 +1,7 @@
 // The header names the server accepts.
 //
 // Three properties, and the first two are differential: the same handler runs
-// against node:http2 and against h2lite, and the two must agree.
+// against node:http2 and against h2lean, and the two must agree.
 //
 //   1. a name that is not a string is refused. node validates the name before
 //      it normalises it -- validateString(name, 'name') in every name-taking
@@ -9,7 +9,7 @@
 //      hasHeader 618, removeHeader 623, setHeader 639, appendHeader 663) --
 //      and validateString throws ERR_INVALID_ARG_TYPE for anything that is not
 //      a string (internal/validators.js:165). Coercing the name instead, which
-//      is what h2lite used to do, was a silent divergence: the name the
+//      is what h2lean used to do, was a silent divergence: the name the
 //      application meant and the name that reached the wire were not the same
 //      one, and the application was never told.
 //   2. the name that reaches the wire is the normalised one: trimmed and lower
@@ -22,7 +22,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { probe, request, nodeHttp2 } = require('./diff-harness');
 const { nameCacheSize, trimName, lowerName } = require('../lib/headers');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const GET = {
   ':method': 'GET',
@@ -60,7 +60,7 @@ test('a header name that is not a string is refused, on both stacks alike', asyn
   };
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
 
   assert.deepStrictEqual(ours.log, native.log, 'what the six accessors do with a number');
   // the refusal is node's own: a TypeError with the code, and the name in the
@@ -86,7 +86,7 @@ test('a header name is trimmed and lower-cased on the way out, like node does it
   };
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
 
   assert.deepStrictEqual(ours.log, native.log);
   // the map holds the normalised name, and the two spellings of it are one header
@@ -119,7 +119,7 @@ test('a response with many distinct names carries every one of them', async () =
   };
 
   const native = await probe(nodeHttp2, handler, script);
-  const ours = await probe(h2lite, handler, script);
+  const ours = await probe(h2lean, handler, script);
 
   assert.deepStrictEqual(ours.result, native.result);
   assert.strictEqual(ours.result.count, COUNT + 2, 'the names, plus :status and date');

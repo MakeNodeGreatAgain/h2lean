@@ -15,7 +15,7 @@
 // above is node closing a stream whose request nobody read (see probe-stream-teardown.js),
 // not part of the response.
 //
-// h2lite answers the headers on write() too. Where it differs is the empty end(): it replies
+// h2lean answers the headers on write() too. Where it differs is the empty end(): it replies
 // 200 with an empty DATA/ES rather than saying nothing, because a stream the peer never gets
 // an answer on is only let go by the idle timeout. That split is pinned in
 // test/response-start.test.js and recorded in AGENTS.md section 10.
@@ -26,7 +26,7 @@
 const net = require('node:net');
 const f = require('../lib/frames');
 const { Decoder } = require('../lib/hpack');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 
 const REQ = Buffer.from([0x82, 0x84, 0x86, 0x01, 9, ...Buffer.from('localhost', 'latin1')]);
@@ -141,8 +141,8 @@ async function run(impl, name, label, app) {
 
 const only = process.argv[2];
 const stacks = only === 'node' ? [[nodeHttp2, 'node  ']]
-  : only === 'h2lite' ? [[h2lite, 'h2lite']]
-    : [[nodeHttp2, 'node  '], [h2lite, 'h2lite']];
+  : only === 'h2lean' ? [[h2lean, 'h2lean']]
+    : [[nodeHttp2, 'node  '], [h2lean, 'h2lean']];
 
 (async () => {
   for (const label of Object.keys(CASES)) {

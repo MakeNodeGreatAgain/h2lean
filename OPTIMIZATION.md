@@ -1,4 +1,4 @@
-# OPTIMIZATION.md — the measured performance knowledge of h2lite
+# OPTIMIZATION.md — the measured performance knowledge of h2lean
 
 One numbered item = one claim. Every claim here was measured in this repository; the
 benchmark that produced it is named next to it, and the noise that could bury it is
@@ -23,7 +23,7 @@ side.
    small-GET pairs stayed flat). Judge drift per case; if the intra-arm spread exceeds
    the between-arm difference, the result is "inside noise". The full convention, the
    ABBA rule and the `GC=1 bench/matrix.sh` harness: `AGENTS.md` §7.
-2. **CPU profiles cannot attribute cost across the JS/C++ boundary.** Diffing an h2lite
+2. **CPU profiles cannot attribute cost across the JS/C++ boundary.** Diffing an h2lean
    profile against a `node:http2` one compares a JS stack with an invisible nghttp2 core —
    the sampler cannot see the C++ side, so the diff is fiction. Within one implementation,
    `busy > 100%` is the signature of parallel V8 GC threads from allocation churn; a
@@ -183,7 +183,7 @@ side.
     column, so the default is off and the flag is a user decision that breaks node's
     mutability contract (`lib/session.js`).
 32. **Flow-control credit is released in half-window steps, not per DATA frame.** An
-    eager one-frame-per-DATA cadence on a 256 kB download cost the h2lite client ~45 µs/req
+    eager one-frame-per-DATA cadence on a 256 kB download cost the h2lean client ~45 µs/req
     over node's own — 16 WINDOW_UPDATE pairs per response instead of the ~8 half-window
     steps the bytes actually span; the half-window cadence itself was read off node's
     nghttp2 (`tools/probe-conn-credit.js`; `lib/session.js` `_creditConnection`,
@@ -268,7 +268,7 @@ side.
     `WINDOW_UPDATE` batching into one `socket.write()` per read cycle was reverted after
     instrumentation recorded 0 executions of the branch under load — unexercised code
     paths rot silently and mislead later attribution.
-31. **`Buffer.from(string)` vs `allocUnsafe + write` as an h2lite change.** External
+31. **`Buffer.from(string)` vs `allocUnsafe + write` as an h2lean change.** External
     advice measured `Buffer.from` faster (54.0 vs 73.4 ns at 8 B; 384.2 vs 642.3 at 4 KB,
     `bench/micro/attack-costs.js`) — and it does not apply: the HPACK encoder writes
     strings straight into the caller's destination buffer (`dst.write(s, off, 'latin1')`),

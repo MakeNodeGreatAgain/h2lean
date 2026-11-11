@@ -3,10 +3,10 @@
 // bytes summed per response. This is the number the HPACK dynamic table is for --
 // CPU is measured by bench/matrix.sh, and a smaller header block is the whole point.
 //
-//   node bench/hpack-wire.js --server=h2lite --api=stream
+//   node bench/hpack-wire.js --server=h2lean --api=stream
 //   node bench/hpack-wire.js --server=native --api=compat
 //
-//   NOTABLE=1  h2lite with its insertion path disabled, i.e. the behaviour from
+//   NOTABLE=1  h2lean with its insertion path disabled, i.e. the behaviour from
 //              before the dynamic table existed. A measurement patch in the bench
 //              process, not an option in the library.
 'use strict';
@@ -18,12 +18,12 @@ const arg = (name, dflt) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
   return hit === undefined ? dflt : hit.split('=')[1];
 };
-const SERVER = arg('server', 'h2lite');
+const SERVER = arg('server', 'h2lean');
 const API = arg('api', 'stream');
 const N = Number(arg('requests', 40));
 const TABLE = process.env.NOTABLE !== '1';
 
-if (SERVER === 'h2lite' && !TABLE) {
+if (SERVER === 'h2lean' && !TABLE) {
   // The pre-feature encoder: a static index when the pair is known, a literal
   // otherwise, nothing ever inserted, and every line cached from the first use.
   hpack.Encoder.prototype.emit = function (dst, off, name, value, neverIndex) {
@@ -40,9 +40,9 @@ if (SERVER === 'h2lite' && !TABLE) {
   };
 }
 
-// The shape bench/h2lite-h2.js answers with, so the two are about the same work.
+// The shape bench/h2lean-h2.js answers with, so the two are about the same work.
 // Both servers are asked to add a `date`: node's stream API does it on its own, and
-// h2lite only does it when told, so without this the two would not be sending the same
+// h2lean only does it when told, so without this the two would not be sending the same
 // fields. `date` also costs bytes, and it repeats for a whole second -- so it is one of
 // the lines the table buys back.
 const FIELDS = {
@@ -60,7 +60,7 @@ const server = API === 'compat'
   : impl.createServer();
 if (API !== 'compat') {
   server.on('stream', (stream) => {
-    // node builds a fresh object per response whether we hand it one or not; h2lite gets
+    // node builds a fresh object per response whether we hand it one or not; h2lean gets
     // the frozen constant, which is the shape the matrix runs on
     if (SERVER === 'native') {
       stream.respond({ ':status': '200', ...FIELDS });

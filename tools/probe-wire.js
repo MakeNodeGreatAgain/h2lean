@@ -1,16 +1,16 @@
-// Wire probe: starts one server (node:http2 or h2lite) in this process, sends a
+// Wire probe: starts one server (node:http2 or h2lean) in this process, sends a
 // single hand-built HTTP/2 request over a raw socket and prints every frame that
 // comes back. Used to diff the two stacks frame by frame -- the observable
 // protocol is what a peer actually sees, not what our objects say.
 //   node tools/probe-wire.js native
-//   node tools/probe-wire.js h2lite
+//   node tools/probe-wire.js h2lean
 //   MODE=continue|head|trailers node tools/probe-wire.js native
 const net = require('node:net');
 const f = require('../lib/frames');
 const { Decoder } = require('../lib/hpack');
 
-const kind = process.argv[2] === 'h2lite' ? 'h2lite' : 'native';
-const impl = kind === 'h2lite' ? require('../index') : require('node:http2');
+const kind = process.argv[2] === 'h2lean' ? 'h2lean' : 'native';
+const impl = kind === 'h2lean' ? require('../index') : require('node:http2');
 const MODE = process.env.MODE || 'plain';
 
 function handler(req, res) {

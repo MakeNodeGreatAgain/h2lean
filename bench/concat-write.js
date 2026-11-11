@@ -2,7 +2,7 @@
 // as `socket.write(Buffer.concat(batch))` instead of the library's corked per-chunk
 // `_writev`, so the two write strategies can be paired in one session on one machine.
 //
-//   PRELOAD=bench/concat-write.js node bench/h2load.js --server=h2lite --api=stream
+//   PRELOAD=bench/concat-write.js node bench/h2load.js --server=h2lean --api=stream
 //   CONCAT=1 PRELOAD=bench/concat-write.js node bench/h2load.js ...   (the concat arm)
 //
 // CONCAT is unset/0 for the baseline arm: it keeps the library's corked `_writePending`

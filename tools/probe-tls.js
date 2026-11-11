@@ -1,4 +1,4 @@
-// What node's createSecureServer actually does, so h2lite can match it: the ALPN
+// What node's createSecureServer actually does, so h2lean can match it: the ALPN
 // decision, session.encrypted, and the class shape. Run against node only.
 'use strict';
 const fs = require('node:fs');

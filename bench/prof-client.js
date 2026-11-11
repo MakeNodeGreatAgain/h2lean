@@ -3,7 +3,7 @@
 // library's own allocations and not the harness's), with the client
 // implementation as the only difference.
 //
-//   IMPL=h2lite PORT=8443 node --cpu-prof --cpu-prof-dir=out/x bench/prof-client.js
+//   IMPL=h2lean PORT=8443 node --cpu-prof --cpu-prof-dir=out/x bench/prof-client.js
 //   IMPL=node   PORT=8443 node --cpu-prof --cpu-prof-dir=out/y bench/prof-client.js
 //
 // The peer is the same server process for both arms, so both clients decode the

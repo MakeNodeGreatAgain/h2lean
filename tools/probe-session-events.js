@@ -1,12 +1,12 @@
 // Session-level event probe (M8). Prints every event a server-side session and
 // its streams fire for one scripted lifecycle, so the same lifecycle can be run
-// against node:http2 and h2lite and the traces compared.
+// against node:http2 and h2lean and the traces compared.
 //   SCENARIO=normal|goaway|destroy|reset|clientReset node tools/probe-session-events.js native
-//   SCENARIO=normal|goaway|destroy|reset|clientReset node tools/probe-session-events.js h2lite
+//   SCENARIO=normal|goaway|destroy|reset|clientReset node tools/probe-session-events.js h2lean
 const http2 = require('node:http2');
 
-const kind = process.argv[2] === 'h2lite' ? 'h2lite' : 'native';
-const impl = kind === 'h2lite' ? require('../index') : http2;
+const kind = process.argv[2] === 'h2lean' ? 'h2lean' : 'native';
+const impl = kind === 'h2lean' ? require('../index') : http2;
 const SCENARIO = process.env.SCENARIO || 'normal';
 
 const log = [];

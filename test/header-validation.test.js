@@ -72,7 +72,7 @@ test('connection-specific field names are rejected by the lookup, not by luck', 
 test('a field value may not carry a control character', () => {
   // The class is the one nghttp2 applies to an INBOUND value, measured character by
   // character against a live node server (out/probe-value-matrix.js): every control
-  // character but HTAB, and DEL. The outbound check is h2lite's own and stricter than
+  // character but HTAB, and DEL. The outbound check is h2lean's own and stricter than
   // node's -- node does not look at an outbound value at all and puts a CR on the wire
   // (out/probe-out-value-matrix.js) -- so this rule is the RFC's, not node's behaviour.
   // A CR is the one that matters: it is what turns one field into two lines for a

@@ -1,8 +1,8 @@
 // One client arm, one payload: start a dedicated nghttpd, run the load loop with
-// either node:http2 or h2lite as the ONLY difference, and print a single JSON
+// either node:http2 or h2lean as the ONLY difference, and print a single JSON
 // result line for matrix.js to collect.
 //
-//   node bench/client/run.js --arm="h2lite client" --body=16384 --duration=6 --port=8970
+//   node bench/client/run.js --arm="h2lean client" --body=16384 --duration=6 --port=8970
 //
 // The server is nghttpd (nghttp2's own C server) serving a fixed static file, so
 // it is the same high-capacity responder for both arms and the bottleneck under
@@ -49,7 +49,7 @@ const duration = Number(opt.duration || 6);
 const port = Number(opt.port || 8970);
 const quiet = opt.verbose !== true && opt.verbose !== '1';
 
-const impl = arm.impl === 'h2lite' ? require('../../index') : require(arm.impl);
+const impl = arm.impl === 'h2lean' ? require('../../index') : require(arm.impl);
 
 // Docroot: one static file, written fresh every spawn, served at /f/index.html.
 const dir = path.join(__dirname, 'dir');

@@ -20,7 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { Http2Session } = require('../lib/session');
 const { listen, closeServer } = require('./diff-harness');
 
@@ -189,7 +189,7 @@ async function flood(impl, count) {
   return result;
 }
 
-for (const impl of [{ name: 'h2lite', mod: h2lite }, { name: 'node', mod: require('node:http2') }]) {
+for (const impl of [{ name: 'h2lean', mod: h2lean }, { name: 'node', mod: require('node:http2') }]) {
   test(`${impl.name}: ${BUDGET} resets are within the budget, a flood is not`, async () => {
     const quiet = await flood(impl.mod, BUDGET);
     assert.strictEqual(quiet.goaway, 0,
@@ -211,7 +211,7 @@ test('a normal client that resets a handful of streams is not disturbed', async 
   // cancel requests that finish early -- so 40 resets interleaved with real requests must
   // leave the connection usable. A budget of 1000 exists to stop a flood, not to punish
   // ordinary traffic.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const paths = [];
   srv.on('stream', (stream, headers) => {
     paths.push(headers[':path']);

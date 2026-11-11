@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { listen, connect, request } = require('./diff-harness');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const POST = { ':method': 'POST', ':path': '/up', ':scheme': 'http', ':authority': 'localhost' };
 
@@ -27,7 +27,7 @@ function bufferedBytes(srv) {
 }
 
 test('a reader that attaches late still gets every byte, in order', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const received = [];
   let ended = false;
   srv.on('stream', (stream) => {
@@ -55,7 +55,7 @@ test('a reader that attaches late still gets every byte, in order', async (t) =>
 });
 
 test('a body nobody reads stalls the sender, not the server', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const window = srv.settings.initialWindowSize;
   const streams = new Map();
   srv.on('stream', (stream) => {
@@ -98,7 +98,7 @@ test('a body nobody reads stalls the sender, not the server', async (t) => {
 });
 
 test('closing a stream with an unread body returns its credit to the connection', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let served = 0;
   srv.on('stream', (stream, headers) => {
     if (headers['x-final'] !== undefined) {
@@ -140,7 +140,7 @@ test('closing a stream with an unread body returns its credit to the connection'
 
 test('pause() mid-body holds the sender; resume() delivers the rest intact', async (t) => {
   const payload = Buffer.alloc(300000, 0x7c);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const window = srv.settings.initialWindowSize;
   const chunks = [];
   const seen = {};
@@ -182,7 +182,7 @@ test('pause() mid-body holds the sender; resume() delivers the rest intact', asy
 
 test('pause() before the body replays intact bytes', async (t) => {
   const payload = Buffer.alloc(50000, 0x6e);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let replayed = null;
   srv.on('stream', (stream) => {
     stream.pause(); // nothing may be delivered yet
@@ -208,7 +208,7 @@ test('pause() before the body replays intact bytes', async (t) => {
 });
 
 test('pause()/resume() cycles do not leak the connection window', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let completed = 0;
   srv.on('stream', (stream) => {
     stream.respond({ ':status': 200 });
@@ -239,7 +239,7 @@ test('pause()/resume() cycles do not leak the connection window', async (t) => {
 });
 
 test('compat: a handler that reads late still gets the whole body', async (t) => {
-  const srv = h2lite.createServer((req, res) => {
+  const srv = h2lean.createServer((req, res) => {
     // the body and its END_STREAM land long before the handler asks for data
     setTimeout(() => {
       const chunks = [];
@@ -261,7 +261,7 @@ test('compat: a handler that reads late still gets the whole body', async (t) =>
 
 test('compat: an unread request gets close and end, like node', async (t) => {
   const events = [];
-  const srv = h2lite.createServer((req, res) => {
+  const srv = h2lean.createServer((req, res) => {
     // nothing reads req here: attaching 'data' would put the Readable in flowing
     // mode and the body would be consumed, which is not the case under test
     req.on('close', () => events.push('close'));

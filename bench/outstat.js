@@ -10,7 +10,7 @@
 // Everything is wrapped onto the prototypes, so the real methods still run and the
 // numbers come from the code path the benchmark is actually exercising.
 //
-//   OUTSTAT=1 node bench/h2lite-h2.js
+//   OUTSTAT=1 node bench/h2lean-h2.js
 'use strict';
 const { Http2Session, MAX_OUT_BATCH, BODY_MIN } = require('../lib/session');
 

@@ -20,7 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { listen, connect, request } = require('./diff-harness');
 
 const REQ = Buffer.from([0x82, 0x84, 0x86, 0x01, 9,
@@ -158,9 +158,9 @@ const cases = [
 for (const [label, handler, want] of cases) {
   test(`${label}: the frame sequence matches node`, async () => {
     const n = await sequence(require('node:http2'), handler, { stopAtEnd: true });
-    const h = await sequence(h2lite, handler, { stopAtEnd: true });
+    const h = await sequence(h2lean, handler, { stopAtEnd: true });
     assert.strictEqual(n.tags, want, `node itself answered [${n.tags}], expected [${want}]`);
-    assert.strictEqual(h.tags, want, `h2lite answered [${h.tags}]`);
+    assert.strictEqual(h.tags, want, `h2lean answered [${h.tags}]`);
   });
 }
 
@@ -178,8 +178,8 @@ test('trailers do not overtake a body that is still waiting for credit', async (
     wantTrailers(s);
     s.end(Buffer.alloc(32 * 1024, 0x61));
   };
-  for (const impl of [h2lite, require('node:http2')]) {
-    const name = impl === h2lite ? 'h2lite' : 'node';
+  for (const impl of [h2lean, require('node:http2')]) {
+    const name = impl === h2lean ? 'h2lean' : 'node';
     const got = await sequence(impl, handler, { window: 4096, stopAtEnd: true });
     const frames = got.tags.split(' ');
     assert.strictEqual(got.bytes, 32 * 1024, `${name}: delivered ${got.bytes} bytes`);
@@ -197,8 +197,8 @@ test('a client that asks for trailers receives them', async () => {
   // decoded trailers=null -- the block went out on an already closed stream and was
   // discarded. Checked through the real client API, so it is the answer an application
   // gets, not just the frame layout.
-  for (const impl of [h2lite, require('node:http2')]) {
-    const name = impl === h2lite ? 'h2lite' : 'node';
+  for (const impl of [h2lean, require('node:http2')]) {
+    const name = impl === h2lean ? 'h2lean' : 'node';
     const srv = impl.createServer();
     srv.on('stream', (stream) => {
       stream.on('error', () => {});
@@ -263,8 +263,8 @@ const eventCases = [
 for (const [label, opts, want] of eventCases) {
   test(`${label}: the events match node`, async () => {
     const n = await trailerEvents(require('node:http2'), opts);
-    const h = await trailerEvents(h2lite, opts);
+    const h = await trailerEvents(h2lean, opts);
     assert.deepStrictEqual(n, want, `node itself: ${JSON.stringify(n)}`);
-    assert.deepStrictEqual(h, want, `h2lite: ${JSON.stringify(h)}, node: ${JSON.stringify(n)}`);
+    assert.deepStrictEqual(h, want, `h2lean: ${JSON.stringify(h)}, node: ${JSON.stringify(n)}`);
   });
 }

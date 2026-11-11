@@ -1,4 +1,4 @@
-# Security policy — h2lite
+# Security policy — h2lean
 
 ## Reporting a problem
 
@@ -10,13 +10,13 @@ is published with the next release once the report is confirmed.
 Do not open a public issue for an unfixed vulnerability, and do not run a vulnerability
 scanner against a third-party deployment of this library as "research".
 
-## What h2lite is, and what that means for the threat model
+## What h2lean is, and what that means for the threat model
 
-h2lite is a pure-JavaScript **HTTP/2 server library** whose public surface is
+h2lean is a pure-JavaScript **HTTP/2 server library** whose public surface is
 `node:http2`. It terminates **untrusted bytes from the network** and turns them into
 objects an application trusts: request headers, a readable body stream, flow-control
 state, and HPACK table entries. Everything behind it — routing, authorisation, the
-HTTP/1.1 translation done by a downstream proxy — inherits whatever h2lite hands over.
+HTTP/1.1 translation done by a downstream proxy — inherits whatever h2lean hands over.
 
 There are exactly two classes of bug that matter here:
 
@@ -38,7 +38,7 @@ peer state, and work done per frame that a peer controls.
 
 No limit here was invented. Each one was **read out of the nghttp2 that node ships or
 measured against a live `node:http2` server**, so that a peer's budget against node is
-its budget against h2lite. Changing a value means changing it to node's, and a value that
+its budget against h2lean. Changing a value means changing it to node's, and a value that
 was measured is pinned by a test that fails when the guard is removed.
 
 | limit | value | what it bounds |
@@ -65,7 +65,7 @@ nobody reads therefore applies backpressure to the sender instead of buffering h
   HTTP/2→HTTP/1.1 translation as the reason the rules are strict). Refusal happens at
   encode time, before a single octet is produced.
 * A field value may not carry a control character (every CTL but HTAB) or DEL. On the way
-  out the value is refused at encode time, like the name above. h2lite is stricter here
+  out the value is refused at encode time, like the name above. h2lean is stricter here
   than node, which does not look at an outbound value at all and puts a CR on the wire
   (measured against a live node server, `out/probe-out-value-matrix.js`): a CR in a value
   is what turns one field into two lines for a translator that splits on it. On the way
@@ -156,7 +156,7 @@ Stated plainly so that nobody assumes coverage that does not exist:
   that arrives; the client keeps node's behaviour, which is a stated gap rather than a
   divergence.
 * **A stream whose request body nobody read is held until the peer or the idle timeout
-  lets it go.** node closes it as soon as the response is finished; h2lite does not yet, so
+  lets it go.** node closes it as soon as the response is finished; h2lean does not yet, so
   a peer that sends HEADERS without END_STREAM occupies a `maxConcurrentStreams` slot and a
   session for as long as the keep-alive timeout allows. This is the open item recorded in
   `AGENTS.md` section 10, and the timeout is the current mitigation.

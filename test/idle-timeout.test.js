@@ -3,12 +3,12 @@
 // The rules below were read off a live node server before being written into the code, because
 // the documentation and node 26 disagree here:
 //   * `server.sessionTimeout` -- documented for years, and NOT present on node 26's server at
-//     all. It is therefore not implemented either: an h2lite-only property with no node
+//     all. It is therefore not implemented either: an h2lean-only property with no node
 //     counterpart is a new surface, not a compatibility fix.
 //   * `server.setTimeout(msecs)` only records `this.timeout` (internal/http2/core.js:3541) and
 //     attaches the callback; it does not walk the sessions. Measured with an idle connection
 //     and server.setTimeout(200): no 'timeout' on the session, no close, the connection simply
-//     stays. h2lite used to arm every live session from here -- inventing an event node does
+//     stays. h2lean used to arm every live session from here -- inventing an event node does
 //     not emit, and skipping every connection accepted afterwards.
 //   * `session.setTimeout(msecs)` is the per-connection policy: it counts silence, activity
 //     refreshes it, and when it fires the session only emits 'timeout'. node's `callTimeout()`
@@ -17,7 +17,7 @@
 //   * `server.updateSettings(settings)` merges into the server's own settings and reaches the
 //     NEXT connection, verified on the wire rather than through a getter.
 //
-// Delays are all below 1 s on purpose: above that h2lite arms on the shared clock in
+// Delays are all below 1 s on purpose: above that h2lean arms on the shared clock in
 // lib/fast-timer.js, whose accuracy is +/- 500 ms by design (that routing is what
 // bench/timers.js measures).
 'use strict';
@@ -25,7 +25,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, connect } = require('./diff-harness');
 
@@ -113,7 +113,7 @@ const armServer = (ms) => (session, srv) => srv.setTimeout(ms);
 
 test('a session timeout fires on silence and closes nothing', async () => {
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, armSession(300), async (client, log) => {
       await sleep(600);
       await ask(client, log); // after the timeout: still a live connection
@@ -121,14 +121,14 @@ test('a session timeout fires on silence and closes nothing', async () => {
   }
   const want = 'session timeout stream resp:200 goaway:0 client.close close';
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 test('activity refreshes the session timeout', async () => {
   // 400 ms timeout, a request at 200 ms: nothing may have fired 350 ms after it, and the
   // timeout must arrive once the connection really goes quiet.
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, armSession(400), async (client, log) => {
       await sleep(200);
       await ask(client, log);
@@ -139,14 +139,14 @@ test('activity refreshes the session timeout', async () => {
   }
   const want = 'session stream resp:200 checkpoint:quiet timeout goaway:0 client.close close';
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 test('server.setTimeout does not arm a session timeout', async () => {
-  // The regression this pins: h2lite used to loop over this._sessions here, which produced a
+  // The regression this pins: h2lean used to loop over this._sessions here, which produced a
   // 'timeout' node does not produce at the server level.
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, armServer(200), async (client, log) => {
       await sleep(600);
       await ask(client, log);
@@ -155,12 +155,12 @@ test('server.setTimeout does not arm a session timeout', async () => {
   const want = 'session stream resp:200 goaway:0 client.close close';
   assert.doesNotMatch(got[0], /timeout/, `node emitted a timeout: ${got[0]}`);
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 test('setTimeout(0) disarms an armed session', async () => {
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, (session) => {
       session.setTimeout(300);
       session.setTimeout(0);
@@ -171,7 +171,7 @@ test('setTimeout(0) disarms an armed session', async () => {
   }
   const want = 'session stream resp:200 goaway:0 client.close close';
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 test('the callback runs after the event, on the session', async () => {
@@ -179,7 +179,7 @@ test('the callback runs after the event, on the session', async () => {
   // so a listener registered by the call runs after one that was already attached -- recorded,
   // not assumed.
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, (session, srv, log) => {
       session.setTimeout(300, () => log.push('cb'));
     }, async (_client, _log) => {
@@ -188,7 +188,7 @@ test('the callback runs after the event, on the session', async () => {
   }
   const want = 'session timeout cb goaway:0 client.close close';
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 test('a destroyed session never reports a timeout', async () => {
@@ -200,9 +200,9 @@ test('a destroyed session never reports a timeout', async () => {
   // in which the two observers -- this side's session and the peer's client -- notice it is
   // timing, not protocol (the same reasoning as in test/frame-limits.test.js). What is pinned is
   // which events happen at all: no 'timeout', the session closed, and the peer was told with a
-  // GOAWAY(NO_ERROR), which is what node's destroy() does and h2lite did not.
+  // GOAWAY(NO_ERROR), which is what node's destroy() does and h2lean did not.
   const got = [];
-  for (const impl of [nodeHttp2, h2lite]) {
+  for (const impl of [nodeHttp2, h2lean]) {
     const seen = { timeout: 0, close: 0, goaway: 'none' };
     const srv = impl.createServer();
     srv.on('session', (session) => {
@@ -233,7 +233,7 @@ test('a destroyed session never reports a timeout', async () => {
   }
   const want = JSON.stringify({ timeout: 0, close: 1, goaway: 0 });
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
-  assert.strictEqual(got[1], want, `h2lite: ${got[1]} vs node: ${got[0]}`);
+  assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
 // ---- settings that apply to the connections that come after -----------------------------
@@ -291,12 +291,12 @@ function firstSettings(port) {
 const ID_MAX_CONCURRENT_STREAMS = 3; // RFC 9113 6.5.2
 
 test('server.updateSettings reaches the next connection, not the live one', async () => {
-  // The two stacks do not advertise the same SET of settings (h2lite sends the full set it has
+  // The two stacks do not advertise the same SET of settings (h2lean sends the full set it has
   // in effect, node sends an empty first frame -- see the header comment in lib/server.js), so
   // what is compared is the effect of the call: after it, a new connection must be told
   // max_concurrent_streams = 7, and the session that was already open must still be running.
-  for (const impl of [nodeHttp2, h2lite]) {
-    const name = impl === nodeHttp2 ? 'node' : 'h2lite';
+  for (const impl of [nodeHttp2, h2lean]) {
+    const name = impl === nodeHttp2 ? 'node' : 'h2lean';
     assert.strictEqual(typeof impl.createServer().updateSettings, 'function',
       `${name}: server.updateSettings is part of node 26's Http2Server`);
     const srv = impl.createServer();
@@ -343,8 +343,8 @@ test('server.updateSettings reaches the next connection, not the live one', asyn
 });
 
 test('an invalid settings argument is refused', async () => {
-  for (const impl of [nodeHttp2, h2lite]) {
-    const name = impl === nodeHttp2 ? 'node' : 'h2lite';
+  for (const impl of [nodeHttp2, h2lean]) {
+    const name = impl === nodeHttp2 ? 'node' : 'h2lean';
     const srv = impl.createServer();
     let code = null;
     try {
@@ -357,16 +357,16 @@ test('an invalid settings argument is refused', async () => {
   }
 });
 
-// ---- the h2lite-only helper -----------------------------------------------------------------
+// ---- the h2lean-only helper -----------------------------------------------------------------
 
 test('closeIdleSessions closes the quiet session and leaves the busy one', async () => {
   // node 26 does not have this method any more (measured: typeof undefined on its server), so
-  // there is nothing to compare against -- what is pinned is that the helper h2lite kept does
+  // there is nothing to compare against -- what is pinned is that the helper h2lean kept does
   // what its name says, and that node really no longer offers it.
   assert.strictEqual(typeof nodeHttp2.createServer().closeIdleSessions, 'undefined',
     'node 26 has closeIdleSessions again: this test should become a differential one');
   const log = [];
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('session', (session) => {
     session.on('close', () => log.push('session.close'));
     session.on('goaway', (code) => log.push('goaway:' + code));

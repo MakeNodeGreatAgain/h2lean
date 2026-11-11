@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { createHook } = require('node:async_hooks');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const fastTimer = require('../lib/fast-timer');
 const { listen, connect, request } = require('./diff-harness');
 
@@ -37,7 +37,7 @@ function armIdleTimeouts(srv, ms, sessions) {
 }
 
 test('a long idle timeout goes to the shared clock and creates no new handle', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
   t.after(() => srv.close());
   const port = await listen(srv);
@@ -70,7 +70,7 @@ test('a long idle timeout goes to the shared clock and creates no new handle', a
 });
 
 test('the shared timeout fires on silence, within the clock resolution', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
   t.after(() => srv.close());
   const port = await listen(srv);
@@ -96,7 +96,7 @@ test('the shared timeout fires on silence, within the clock resolution', async (
 });
 
 test('traffic refreshes the idle timeout; silence afterwards still fires', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
   t.after(() => srv.close());
   const port = await listen(srv);
@@ -138,7 +138,7 @@ test('traffic refreshes the idle timeout; silence afterwards still fires', async
 });
 
 test('setTimeout twice replaces the previous timer, ms 0 disarms', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
   t.after(() => srv.close());
   const port = await listen(srv);

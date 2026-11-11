@@ -1,5 +1,5 @@
 // The h2s (TLS) front door. Each case is run twice in the same process -- once
-// against node:http2's createSecureServer and once against h2lite's -- and the two
+// against node:http2's createSecureServer and once against h2lean's -- and the two
 // recordings are compared, so what these tests assert is "the peer and the
 // application observe the same thing", not an expectation picked from the docs.
 'use strict';
@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const tls = require('node:tls');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const certificates = require('./fixtures-tls');
 const { listen } = require('./diff-harness');
 
@@ -79,7 +79,7 @@ async function streamRun(impl) {
 
 test('the stream API over TLS behaves like node', async () => {
   const node = await streamRun(http2);
-  const ours = await streamRun(h2lite);
+  const ours = await streamRun(h2lean);
   assert.deepStrictEqual(ours, node);
   // and the reference itself says what h2s is supposed to say
   assert.strictEqual(node.clientAlpn, 'h2');
@@ -118,7 +118,7 @@ async function compatRun(impl) {
 
 test('the compat (req, res) API over TLS behaves like node', async () => {
   const node = await compatRun(http2);
-  const ours = await compatRun(h2lite);
+  const ours = await compatRun(h2lean);
   assert.deepStrictEqual(ours, node);
   assert.strictEqual(node.encrypted, 'true');
   assert.strictEqual(node.alpn, 'h2');
@@ -153,7 +153,7 @@ async function refusedRun(impl) {
 test('an application-supplied ALPN list cannot make the h2 server accept http/1.1',
   async () => {
     const node = await refusedRun(http2);
-    const ours = await refusedRun(h2lite);
+    const ours = await refusedRun(h2lean);
     assert.deepStrictEqual(ours, node);
     assert.deepStrictEqual(node.events, ['tlsClientError:ERR_SSL_NO_APPLICATION_PROTOCOL']);
   });
@@ -190,7 +190,7 @@ async function lateContextRun(impl) {
 test('a context installed later still keeps a non-h2 protocol out of the sessions',
   async () => {
     const node = await lateContextRun(http2);
-    const ours = await lateContextRun(h2lite);
+    const ours = await lateContextRun(h2lean);
     assert.deepStrictEqual(ours, node);
     assert.ok(!ours.events.includes('session'),
       'a connection that did not negotiate h2 must never become a session');
@@ -224,7 +224,7 @@ async function cleartextRun(impl) {
 
 test('cleartext HTTP/2 on the TLS port is not accepted as a session', async () => {
   const node = await cleartextRun(http2);
-  const ours = await cleartextRun(h2lite);
+  const ours = await cleartextRun(h2lean);
   assert.deepStrictEqual(ours, node);
   assert.ok(!node.events.includes('session'));
 });
@@ -268,7 +268,7 @@ test('a 70 KB upload over TLS arrives intact on both stacks', async () => {
     return answer;
   }
   const node = await uploadRun(http2);
-  const ours = await uploadRun(h2lite);
+  const ours = await uploadRun(h2lean);
   assert.deepStrictEqual(ours, node);
   assert.strictEqual(ours.received, String(70000));
 });
@@ -316,14 +316,14 @@ test('a 200 KB response over TLS arrives intact on both stacks', async () => {
     return out;
   }
   const node = await downloadRun(http2);
-  const ours = await downloadRun(h2lite);
+  const ours = await downloadRun(h2lean);
   assert.deepStrictEqual(ours, node);
   assert.strictEqual(ours.length, 200000);
   assert.strictEqual(ours.patternOk, true, 'every byte reached the peer in order');
 });
 
 test('the h2c server keeps reporting no encryption and no ALPN', async () => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const seen = [];
   srv.on('stream', (stream) => {
     seen.push({ encrypted: stream.session.encrypted, alpn: stream.session.alpnProtocol });
@@ -356,7 +356,7 @@ test('retained upload chunks stay intact over TLS', async () => {
 
   const { key, cert } = certificates();
   let result = null;
-  const srv = h2lite.createSecureServer({ key, cert }, (req, res) => {
+  const srv = h2lean.createSecureServer({ key, cert }, (req, res) => {
     const kept = [];
     req.on('data', (d) => kept.push(d));
     req.on('end', () => {

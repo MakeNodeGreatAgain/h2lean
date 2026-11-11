@@ -15,7 +15,7 @@
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 const DELAY = Number(process.argv[2] || 200);
@@ -114,7 +114,7 @@ function run(impl) {
         stream.end(Buffer.alloc(BODY, 0x61));
         stream.on('close', done);
       } else {
-        session = h2lite.connect(url);
+        session = h2lean.connect(url);
         stream = session.request({ ':path': '/', ':method': 'POST' });
         stream.on('error', () => {});
         stream.end(Buffer.alloc(BODY, 0x61));
@@ -126,7 +126,7 @@ function run(impl) {
 }
 
 (async () => {
-  for (const impl of ['node', 'h2lite']) {
+  for (const impl of ['node', 'h2lean']) {
     const st = await run(impl);
     const head = st.timeline.find((e) => e.what === 'type 1');
     const settings = st.timeline.find((e) => e.what === 'settings sent');

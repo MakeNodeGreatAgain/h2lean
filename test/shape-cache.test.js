@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 // :method GET and :path "/" taken from the static table (indices 2 and 4), :scheme http
 // (6), and :authority as a literal with an indexed name (static 1). The last two are not
@@ -64,7 +64,7 @@ async function sendBlocks(srv, blocks, port) {
 }
 
 test('a repeated header block is only cached while the HPACK table holds still', async (t) => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const seen = new Map();
   srv.on('stream', (stream, headers) => {
     seen.set(stream.id, { ...headers });
@@ -117,7 +117,7 @@ test('a repeated header block is only cached while the HPACK table holds still',
 // same frozen object request 3 saw, i.e. the wrong headers by identity too.
 test('shareHeaders on: a changed HPACK table never reuses the shared object', async (t) => {
   const seen = new Map();
-  const srv = h2lite.createServer({ shareHeaders: true });
+  const srv = h2lean.createServer({ shareHeaders: true });
   srv.on('stream', (stream, headers) => {
     seen.set(stream.id, headers);
     stream.respond({ ':status': 200 }, { endStream: true });

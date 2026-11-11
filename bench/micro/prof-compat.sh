@@ -3,14 +3,14 @@
 #
 #   sh bench/micro/prof-compat.sh [duration]
 #
-# The h2lite server arm, profiled twice -- once with the stream API and once
+# The h2lean server arm, profiled twice -- once with the stream API and once
 # with the compat API -- under the same h2load workload. A CPU profile reports
 # shares, and shares are useless for comparing two programs; tools/cpuprofile-report.js
 # normalises every self-time entry to ns per request, so the diff column is the
 # real answer: what the compat path costs that the stream path does not.
 #
 # Only self time is used, and the comparison is between two profiles of the same
-# program (h2lite against h2lite), which is the only kind the tool can answer.
+# program (h2lean against h2lean), which is the only kind the tool can answer.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -23,7 +23,7 @@ run() {
   api=$1
   port=$((port+1))
   ROLE=server API="$api" PORT=$port DURATION=$((dur*1000+3000)) GC=1 \
-    node --cpu-prof --cpu-prof-dir="$out/$api" bench/h2lite-h2.js > "$out/$api.server.txt" 2>&1 &
+    node --cpu-prof --cpu-prof-dir="$out/$api" bench/h2lean-h2.js > "$out/$api.server.txt" 2>&1 &
   srvpid=$!
   i=0
   while [ $i -lt 60 ]; do

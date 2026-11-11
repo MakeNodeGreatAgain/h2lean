@@ -69,7 +69,7 @@ console.log('\nthe whole map (four fields, dynamic keys)');
 function buildLiteral() {
   const o = { __proto__: null };
   o['content-type'] = 'text/plain';
-  o.server = 'h2lite';
+  o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef';
   o[':status'] = 200;
   globalThis.sink = o;
@@ -77,7 +77,7 @@ function buildLiteral() {
 function buildStripped() {
   const o = Object.setPrototypeOf({}, null);
   o['content-type'] = 'text/plain';
-  o.server = 'h2lite';
+  o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef';
   o[':status'] = 200;
   globalThis.sink = o;
@@ -85,7 +85,7 @@ function buildStripped() {
 function buildCtor() {
   const o = new NullMap();
   o['content-type'] = 'text/plain';
-  o.server = 'h2lite';
+  o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef';
   o[':status'] = 200;
   globalThis.sink = o;
@@ -98,7 +98,7 @@ const mCtor = bench('new NullMap()', buildCtor);
 console.log('\nthe same map, Object.keys() and a keyed read per field');
 function readLit() {
   const o = { __proto__: null };
-  o['content-type'] = 'text/plain'; o.server = 'h2lite';
+  o['content-type'] = 'text/plain'; o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef'; o[':status'] = 200;
   const keys = Object.keys(o);
   let n = 0;
@@ -107,7 +107,7 @@ function readLit() {
 }
 function readStr() {
   const o = Object.setPrototypeOf({}, null);
-  o['content-type'] = 'text/plain'; o.server = 'h2lite';
+  o['content-type'] = 'text/plain'; o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef'; o[':status'] = 200;
   const keys = Object.keys(o);
   let n = 0;
@@ -116,7 +116,7 @@ function readStr() {
 }
 function readCtor() {
   const o = new NullMap();
-  o['content-type'] = 'text/plain'; o.server = 'h2lite';
+  o['content-type'] = 'text/plain'; o.server = 'h2lean';
   o['x-trace'] = '0123456789abcdef'; o[':status'] = 200;
   const keys = Object.keys(o);
   let n = 0;

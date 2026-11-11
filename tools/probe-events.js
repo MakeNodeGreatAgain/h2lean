@@ -1,15 +1,15 @@
 // Event-order probe (M8). Records, in order, which events fire on which object,
 // and in which turn of the event loop they fire, for a scripted exchange. Then
-// the same script runs against node:http2 and against h2lite and the two traces
+// the same script runs against node:http2 and against h2lean and the two traces
 // are compared -- the wire is already proven identical, what is left is the
 // temporal contract the application sees.
 //   node tools/probe-events.js native
-//   node tools/probe-events.js h2lite
+//   node tools/probe-events.js h2lean
 const http2 = require('node:http2');
 const assert = require('node:assert');
 
-const kind = process.argv[2] === 'h2lite' ? 'h2lite' : 'native';
-const impl = kind === 'h2lite' ? require('../index') : http2;
+const kind = process.argv[2] === 'h2lean' ? 'h2lean' : 'native';
+const impl = kind === 'h2lean' ? require('../index') : http2;
 
 // A phase advances once per loop turn, so "same phase" means "the application
 // could not have observed anything in between" and a phase jump means a real

@@ -17,13 +17,13 @@
 // rules that run first, so the same status can produce a different error code depending on
 // the API the application used -- the compatCases table at the bottom pins that too.
 //
-// Before this file, h2lite accepted 100..999 in respond() and reported 101 with a code
+// Before this file, h2lean accepted 100..999 in respond() and reported 101 with a code
 // node only ever uses on the informational path -- so the two stacks disagreed twice over
 // on the same call.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, connect, request } = require('./diff-harness');
 
@@ -93,12 +93,12 @@ for (const value of responseCases) {
   const [status, want] = value;
   test(`respond({':status':${JSON.stringify(status)}}) -> ${want}`, async () => {
     const got = [];
-    for (const impl of [h2lite, nodeHttp2]) {
+    for (const impl of [h2lean, nodeHttp2]) {
       got.push(await callStreamApi(impl, (s) =>
         s.respond({ ':status': status }, { endStream: true })));
     }
     assert.strictEqual(got[1], want, `node itself answered ${got[1]}`);
-    assert.strictEqual(got[0], want, `h2lite answered ${got[0]}, node answered ${got[1]}`);
+    assert.strictEqual(got[0], want, `h2lean answered ${got[0]}, node answered ${got[1]}`);
   });
 }
 
@@ -115,12 +115,12 @@ const infoCases = [
 for (const [status, want] of infoCases) {
   test(`additionalHeaders({':status':${status}}) -> ${want}`, async () => {
     const got = [];
-    for (const impl of [h2lite, nodeHttp2]) {
+    for (const impl of [h2lean, nodeHttp2]) {
       got.push(await callStreamApi(impl, (s) =>
         s.additionalHeaders({ ':status': status, link: '</a.css>; rel=preload' })));
     }
     assert.strictEqual(got[1], want, `node itself answered ${got[1]}`);
-    assert.strictEqual(got[0], want, `h2lite answered ${got[0]}, node answered ${got[1]}`);
+    assert.strictEqual(got[0], want, `h2lean answered ${got[0]}, node answered ${got[1]}`);
   });
 }
 
@@ -133,7 +133,7 @@ test('an informational block without a :status is the application\'s error, not 
   // NGHTTP2_PROTOCOL_ERROR. What is pinned here is that both stacks make the same promise
   // to the application (no local refusal) and get the same answer from the peer.
   const got = [];
-  for (const impl of [h2lite, nodeHttp2]) {
+  for (const impl of [h2lean, nodeHttp2]) {
     got.push(await callStreamApi(impl, (s) => {
       s.additionalHeaders({ link: '</a.css>; rel=preload' });
       s.respond({ ':status': 200 }, { endStream: true });
@@ -143,14 +143,14 @@ test('an informational block without a :status is the application\'s error, not 
   // throw, and the peer's reset means no status ever arrives to report -- both stacks have
   // to land in the same place, because an application cannot tell them apart from here.
   assert.strictEqual(got[1], 'ok null', `node: ${got[1]}`);
-  assert.strictEqual(got[0], got[1], `h2lite ${got[0]} vs node ${got[1]}`);
+  assert.strictEqual(got[0], got[1], `h2lean ${got[0]} vs node ${got[1]}`);
 });
 
 test('a coerced status is what reaches the wire', async () => {
   // Not a throw, and not the application's string either: node writes the coerced number
   // back into the headers, so '200.5' must arrive as 200 rather than as '200.5'.
-  for (const impl of [h2lite, nodeHttp2]) {
-    const name = impl === h2lite ? 'h2lite' : 'node';
+  for (const impl of [h2lean, nodeHttp2]) {
+    const name = impl === h2lean ? 'h2lean' : 'node';
     const srv = impl.createServer();
     srv.on('stream', (stream) => {
       stream.on('error', () => {});
@@ -227,7 +227,7 @@ async function callCompat(impl, act) {
 // The four writeInformation cases carry a second expectation: node before v24 throws a
 // code-less error out of writeInformation() for every status and never puts an informational
 // response on the wire -- measured on v20.19.5 and v22.21.1, all four statuses identical
-// ('server[throw:undefined] client[status:200]'). h2lite pins the v24+ behavior; the node
+// ('server[throw:undefined] client[status:200]'). h2lean pins the v24+ behavior; the node
 // arm accepts whichever its version produces.
 const LEGACY_WRITE_INFORMATION = 'server[throw:undefined] client[status:200]';
 const compatCases = [
@@ -273,10 +273,10 @@ const compatCases = [
 for (const [name, act, want, nodeWant] of compatCases) {
   test(`compat ${name} -> ${want}`, async () => {
     const got = [];
-    for (const impl of [h2lite, nodeHttp2]) {
+    for (const impl of [h2lean, nodeHttp2]) {
       got.push(await callCompat(impl, act));
     }
     assert.ok(got[1] === want || got[1] === nodeWant, `node itself produced ${got[1]}`);
-    assert.strictEqual(got[0], want, `h2lite produced ${got[0]}, node produced ${got[1]}`);
+    assert.strictEqual(got[0], want, `h2lean produced ${got[0]}, node produced ${got[1]}`);
   });
 }

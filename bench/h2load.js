@@ -5,15 +5,15 @@
 // req/s number here is close to what the server can actually do, and the
 // CPU/req number is measured under real saturation.
 //
-//   node bench/h2load.js --server=h2lite --api=stream --clients=64 --threads=8 --duration=10
+//   node bench/h2load.js --server=h2lean --api=stream --clients=64 --threads=8 --duration=10
 //   node bench/h2load.js --server=native --api=compat --clients=64 --threads=8 --duration=10
-//   node bench/h2load.js --server=h2lite --body=4096 --duration=10   # POST uploads
-//   node bench/h2load.js --server=h2lite --tls --duration=10         # h2s + records
-//   node bench/h2load.js --server=h2lite --resp=262144 --winbits=18  # 256 KB window
+//   node bench/h2load.js --server=h2lean --body=4096 --duration=10   # POST uploads
+//   node bench/h2load.js --server=h2lean --tls --duration=10         # h2s + records
+//   node bench/h2load.js --server=h2lean --resp=262144 --winbits=18  # 256 KB window
 //
 // PRELOAD=<file> starts the server process with `node -r <file>`, which is how a
 // measurement arm is switched without touching the server script or the library:
-//   PRELOAD=bench/no-table.js node bench/h2load.js --server=h2lite --api=stream
+//   PRELOAD=bench/no-table.js node bench/h2load.js --server=h2lean --api=stream
 //
 // --winbits=N sets the client's advertised flow-control window to (2**N)-1 at both
 // the stream and the connection level (h2load -w/-W, default 16 = 65 535). It
@@ -38,7 +38,7 @@ const opt = Object.fromEntries(process.argv.slice(2).map((a) => {
   return m ? [m[1], m[2]] : [a.slice(2), true];
 }));
 
-const kind = opt.server || 'h2lite';
+const kind = opt.server || 'h2lean';
 const api = opt.api || 'stream';
 const clients = Number(opt.clients || 64);
 const threads = Number(opt.threads || 8);
@@ -50,7 +50,7 @@ const winbits = Number(opt.winbits || 0); // client advertised window, 0 = h2loa
 const port = Number(opt.port || 8470);
 const tlsMode = opt.tls === true || opt.tls === '1';
 
-const SRV_FILES = { native: 'bench/prof-h2.js', h2lite: 'bench/h2lite-h2.js' };
+const SRV_FILES = { native: 'bench/prof-h2.js', h2lean: 'bench/h2lean-h2.js' };
 
 const env = {
   ...process.env,

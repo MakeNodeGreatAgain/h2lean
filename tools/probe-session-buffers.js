@@ -7,7 +7,7 @@
 // Usage: node --expose-gc tools/probe-session-buffers.js [connections]
 'use strict';
 const net = require('node:net');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 const N = Number(process.argv[2] || 200);
@@ -48,7 +48,7 @@ function openIdle(port) {
 
 (async () => {
   const sessions = [];
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('session', (s) => sessions.push(s));
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const socks = await openIdle(srv.address().port);

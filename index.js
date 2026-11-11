@@ -1,4 +1,4 @@
-// h2lite -- a pure-JS HTTP/2 library with a node:http2-shaped API.
+// h2lean -- a pure-JS HTTP/2 library with a node:http2-shaped API.
 //
 // Servers: h2c and h2s (prior-knowledge, ALPN 'h2'), the `stream` and compat
 // (`request`) APIs. Client: `connect()` + `session.request()` over h2c and h2s

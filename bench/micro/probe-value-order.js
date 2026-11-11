@@ -2,7 +2,7 @@
 // a rule of its own?
 //
 //   node bench/micro/probe-value-order.js native
-//   node bench/micro/probe-value-order.js h2lite
+//   node bench/micro/probe-value-order.js h2lean
 //
 // One request per case: the field is dropped (nghttp2's IGN_HTTP_HEADER), the
 // stream is refused (PROTOCOL_ERROR), or the request is served with the field
@@ -11,8 +11,8 @@
 const net = require('node:net');
 const f = require('../../lib/frames');
 
-const kind = process.argv[2] === 'h2lite' ? 'h2lite' : 'native';
-const impl = kind === 'h2lite' ? require('../../index') : require('node:http2');
+const kind = process.argv[2] === 'h2lean' ? 'h2lean' : 'native';
+const impl = kind === 'h2lean' ? require('../../index') : require('node:http2');
 
 // (an old `const CR = 0x0d` was read by nothing and is gone; the cases below
 // carry the CR as a literal)

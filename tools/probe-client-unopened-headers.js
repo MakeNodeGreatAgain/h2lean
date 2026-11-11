@@ -16,7 +16,7 @@
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -59,7 +59,7 @@ function rawServer(plan) {
 function run(impl, plan) {
   return rawServer(plan).then(({ srv, sockets }) => new Promise((resolve) => {
     const url = `http://127.0.0.1:${srv.address().port}`;
-    const sess = impl === 'node' ? http2.connect(url) : h2lite.connect(url);
+    const sess = impl === 'node' ? http2.connect(url) : h2lean.connect(url);
     const said = [];
     sess.on('goaway', (code) => said.push(`goaway ${code}`));
     sess.on('error', (e) => said.push(`session error ${e.code || ''} ${e.message}`));
@@ -89,9 +89,9 @@ function run(impl, plan) {
   ];
   for (const c of cases) {
     const node = await run('node', c.plan);
-    const lite = await run('h2lite', c.plan);
+    const lite = await run('h2lean', c.plan);
     console.log(`--- ${c.name}`);
     console.log(`    node   says: ${node.join(' | ') || 'nothing'}`);
-    console.log(`    h2lite says: ${lite.join(' | ') || 'nothing'}`);
+    console.log(`    h2lean says: ${lite.join(' | ') || 'nothing'}`);
   }
 })();

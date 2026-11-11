@@ -1,7 +1,7 @@
 // How does a large response actually reach the socket?
 //
-// bench/h2load.js --resp=262144 put h2lite 1.4x behind node:http2 on cpuPerReq
-// while h2lite won by 1.9x at --resp=32768, and a --cpu-prof run of the 256 KB
+// bench/h2load.js --resp=262144 put h2lean 1.4x behind node:http2 on cpuPerReq
+// while h2lean won by 1.9x at --resp=32768, and a --cpu-prof run of the 256 KB
 // case spent 75% of busy time inside node's writeBuffer, 14% in the memcpy into the
 // staging buffer and 8.6% in compacting what was left behind. This probe answers what
 // those numbers are made of, by counting on the real code path (no patched copy of it):
@@ -18,7 +18,7 @@
 //   node tools/probe-outbound.js [respBytes] [requests] [clientWindowBytes]
 'use strict';
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { Http2Session: Session, MAX_OUT_BATCH, BODY_MIN } = require('../lib/session');
 
 const SIZE = Number(process.argv[2] || 262144);
@@ -82,7 +82,7 @@ Session.prototype._frame = function (type, flags, sid, payload, owned) {
   frame.call(this, type, flags, sid, payload, owned);
 };
 
-const srv = h2lite.createServer();
+const srv = h2lean.createServer();
 srv.on('stream', (stream) => {
   stream.respond(HEADERS); stream.end(BODY);
 });

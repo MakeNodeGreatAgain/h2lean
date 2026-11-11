@@ -5,14 +5,14 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { listen, connect, request } = require('./diff-harness');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const A = { ':method': 'GET', ':path': '/a?q=1', ':scheme': 'http', ':authority': 'localhost', accept: '*/*' };
 const B = { ...A, ':path': '/b?q=1' };
 
 function collectingServer(options) {
   const seen = [];
-  const srv = h2lite.createServer(options);
+  const srv = h2lean.createServer(options);
   srv.on('stream', (stream, headers) => {
     seen.push(headers);
     stream.respond({ ':status': 200 }, { endStream: true });
@@ -101,7 +101,7 @@ test('shareHeaders on: set-cookie arrays are frozen too', async () => {
 
 test('shareHeaders on: the compat setters refuse a frozen request', async () => {
   const errors = [];
-  const srv = h2lite.createServer({ shareHeaders: true }, (req, res) => {
+  const srv = h2lean.createServer({ shareHeaders: true }, (req, res) => {
     try {
       req.url = '/rewritten';
     } catch (e) {
@@ -121,14 +121,14 @@ test('shareHeaders on: the compat setters refuse a frozen request', async () => 
   client.destroy();
   srv.close();
 
-  assert.deepStrictEqual(errors, ['ERR_H2LITE_FROZEN_HEADERS', 'ERR_H2LITE_FROZEN_HEADERS']);
+  assert.deepStrictEqual(errors, ['ERR_H2LEAN_FROZEN_HEADERS', 'ERR_H2LEAN_FROZEN_HEADERS']);
   assert.strictEqual(res.headers['x-url'], '/a?q=1', 'the request must not have been rewritten');
 });
 
 test('shareHeaders on: the size limit is still checked for a cached shape', async () => {
   // Headers are counted when the shape is first seen; the second identical
   // request must still be refused if the limit says so.
-  const srv = h2lite.createServer({
+  const srv = h2lean.createServer({
     shareHeaders: true,
     settings: { maxHeaderListSize: 48 }
   });

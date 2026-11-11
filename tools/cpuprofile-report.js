@@ -9,7 +9,7 @@
 //
 //   node tools/cpuprofile-report.js label:profile.cpuprofile:reqs ...
 //
-// example, with the request counts taken from the "[h2lite stream] req=..." line:
+// example, with the request counts taken from the "[h2lean stream] req=..." line:
 //   node tools/cpuprofile-report.js \
 //     ours:prof/ours/CPU.x.cpuprofile:165309 node:prof/native/CPU.y.cpuprofile:174146
 //
@@ -17,7 +17,7 @@
 // which is where the syscall and the kernel copy happen, cumulative would fold the
 // whole request into one line and hide the answer.
 //
-// COMPARING h2lite WITH node:http2 THIS WAY DOES NOT WORK, and the numbers say so:
+// COMPARING h2lean WITH node:http2 THIS WAY DOES NOT WORK, and the numbers say so:
 // the same run left 92% of our CPU visible to the sampler and only 15% of node's,
 // because node's HTTP/2 core is C++ (nghttp2, StreamResource::DoWrite, uv_write)
 // and V8 files those samples under (program) or not at all, while process.cpuUsage()
@@ -58,7 +58,7 @@ function load(file, reqs) {
       idle += dt; continue;
     }
     const key = `${node.callFrame.functionName || '(anon)'}  `
-      + `${(node.callFrame.url || '').replace(/^file:\/\//, '').replace(/^.*\/h2lite\//, '')}`
+      + `${(node.callFrame.url || '').replace(/^file:\/\//, '').replace(/^.*\/h2lean\//, '')}`
       + `:${node.callFrame.lineNumber + 1}`;
     self.set(key, (self.get(key) || 0) + dt);
   }
@@ -112,7 +112,7 @@ const parentOf = (p) => {
   return map;
 };
 const name = (n) => !n ? '?' : `${n.callFrame.functionName || '(builtin)'}  `
-  + `${(n.callFrame.url || '').replace(/^file:\/\//, '').replace(/^.*\/h2lite\//, '')}`
+  + `${(n.callFrame.url || '').replace(/^file:\/\//, '').replace(/^.*\/h2lean\//, '')}`
   + `:${n.callFrame.lineNumber + 1}`;
 for (const r of runs) {
   if (!r.profiles) {

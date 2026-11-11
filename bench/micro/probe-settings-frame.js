@@ -1,11 +1,11 @@
 // What goes into the first SETTINGS frame of a session, and what goes into the one that
-// follows an updateSettings() -- node:http2 against h2lite, on a raw socket so the frame
+// follows an updateSettings() -- node:http2 against h2lean, on a raw socket so the frame
 // is read as bytes and not as an object.
 //
 //   node bench/micro/probe-settings-frame.js
 'use strict';
 const net = require('node:net');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const nodeHttp2 = require('node:http2');
 
 const f = require('../../lib/frames');
@@ -86,13 +86,13 @@ async function run(name, impl, options, update) {
 (async () => {
   console.log('--- no options ---');
   await run('node  ', nodeHttp2, undefined, null);
-  await run('h2lite', h2lite, undefined, null);
+  await run('h2lean', h2lean, undefined, null);
 
   console.log('--- settings: {maxConcurrentStreams: 100, maxFrameSize: 32768} ---');
   await run('node  ', nodeHttp2, { settings: { maxConcurrentStreams: 100, maxFrameSize: 32768 } }, null);
-  await run('h2lite', h2lite, { settings: { maxConcurrentStreams: 100, maxFrameSize: 32768 } }, null);
+  await run('h2lean', h2lean, { settings: { maxConcurrentStreams: 100, maxFrameSize: 32768 } }, null);
 
   console.log('--- after server.updateSettings({initialWindowSize: 65536}) ---');
   await run('node  ', nodeHttp2, { settings: { maxConcurrentStreams: 100 } }, { initialWindowSize: 65536 });
-  await run('h2lite', h2lite, { settings: { maxConcurrentStreams: 100 } }, { initialWindowSize: 65536 });
+  await run('h2lean', h2lean, { settings: { maxConcurrentStreams: 100 } }, { initialWindowSize: 65536 });
 })();

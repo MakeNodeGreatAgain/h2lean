@@ -7,7 +7,7 @@
 #
 #   sh bench/matrix.sh <label>        -> /tmp/mx-<label>/<case>.txt
 #
-# Every h2lite case is paired with the same case on node:http2. The pairs are not
+# Every h2lean case is paired with the same case on node:http2. The pairs are not
 # only the parity answer -- the native half is the drift meter. The same native
 # code measured minutes apart moves 8-13%, so an unpaired before/after run cannot
 # tell a regression from run-to-run noise; only the paired number can.
@@ -29,19 +29,19 @@ run() {
   grep -E "h2load:|server:" "$out/$name.txt"
 }
 
-run plain-stream       --server=h2lite --api=stream
+run plain-stream       --server=h2lean --api=stream
 run native-plain-strm  --server=native --api=stream
-run plain-compat       --server=h2lite --api=compat
+run plain-compat       --server=h2lean --api=compat
 run native-plain-compt --server=native --api=compat
-run plain-up32k        --server=h2lite --api=stream --body=32768
+run plain-up32k        --server=h2lean --api=stream --body=32768
 run native-plain-up32k --server=native --api=stream --body=32768
-run plain-up128k       --server=h2lite --api=stream --body=131072
+run plain-up128k       --server=h2lean --api=stream --body=131072
 run native-plain-up128 --server=native --api=stream --body=131072
-run plain-down32k      --server=h2lite --api=stream --resp=32768
+run plain-down32k      --server=h2lean --api=stream --resp=32768
 run native-plain-dn32k --server=native --api=stream --resp=32768
-run plain-down256k     --server=h2lite --api=stream --resp=262144
+run plain-down256k     --server=h2lean --api=stream --resp=262144
 run native-plain-dn256 --server=native --api=stream --resp=262144
-run tls-stream         --server=h2lite --api=stream --tls
+run tls-stream         --server=h2lean --api=stream --tls
 run native-tls-stream  --server=native --api=stream --tls
-run tls-up32k          --server=h2lite --api=stream --body=32768 --tls
+run tls-up32k          --server=h2lean --api=stream --body=32768 --tls
 run native-tls-up32k   --server=native --api=stream --body=32768 --tls

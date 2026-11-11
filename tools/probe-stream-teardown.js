@@ -1,7 +1,7 @@
 // When the application answers a request whose inbound half never ended, node closes the stream
 // anyway -- `Http2Stream[kMaybeDestroy]()` (internal/http2/core) says "we've submitted a response
 // from our server session, have not attempted to process any incoming data, and have no trailers",
-// and calls `stream.close()` from the writable side's 'finish'. h2lite has no such rule, so
+// and calls `stream.close()` from the writable side's 'finish'. h2lean has no such rule, so
 // `_liveStreams` stays at 1 and a closing session waits for a stream that will never finish.
 //
 // Each case prints what the peer saw on the wire, what the stream and session look like after the
@@ -13,7 +13,7 @@
 'use strict';
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen } = require('../test/diff-harness');
 
@@ -118,7 +118,7 @@ async function run(impl, name, label, closeSession) {
     // the peer's own view of the goodbye: `end()` and `destroy()` both put a FIN on the wire when
     // everything written has been acked, which is why the socket.end() in _maybeFinishClose has no
     // observable effect of its own -- and `writable=false` afterwards is node having gone all the way
-    // through its socket, where h2lite leaves the read half standing.
+    // through its socket, where h2lean leaves the read half standing.
   console.log(`${name} ${label.padEnd(20)} live=${live === undefined ? '?' : live}` +
     ` stream.closed=${stream && stream.closed} stream.destroyed=${stream && stream.destroyed}` +
     ` session=${session.closed}/${session.destroyed}\n` +
@@ -137,8 +137,8 @@ const only = process.argv[2];
       if (!only || only === 'node') {
         await run(nodeHttp2, 'node  ', label, close);
       }
-      if (!only || only === 'h2lite') {
-        await run(h2lite, 'h2lite', label, close);
+      if (!only || only === 'h2lean') {
+        await run(h2lean, 'h2lean', label, close);
       }
     }
   }

@@ -4,7 +4,7 @@
 //   PLAIN=1 node tools/probe-upload-stress.js [bodyBytes] [seconds]
 'use strict';
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const certificates = require('../test/fixtures-tls');
 
 const PLAIN = process.env.PLAIN === '1';
@@ -32,8 +32,8 @@ function handler(req, res) {
   req.on('error', (e) => srvEvents.push(`req error ${e.code}`));
 }
 
-const srv = PLAIN ? h2lite.createServer(handler)
-  : h2lite.createSecureServer(certificates(), handler);
+const srv = PLAIN ? h2lean.createServer(handler)
+  : h2lean.createSecureServer(certificates(), handler);
 srv.on('sessionError', (e) => srvEvents.push(`sessionError ${e.code || e.message}`));
 srv.on('session', (s) => {
   s.on('stream', (st) => {

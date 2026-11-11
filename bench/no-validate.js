@@ -4,7 +4,7 @@
 // and it exists only for `PRELOAD=bench/no-validate.js node bench/h2load.js ...`.
 //
 // What it disables: _requestProblem returns null, so every request is accepted as
-// decoded -- which is exactly what h2lite did before the validator existed, the point at
+// decoded -- which is exactly what h2lean did before the validator existed, the point at
 // which node's nghttp2 had been refusing these requests for years.
 'use strict';
 const { Http2Session } = require('../lib/session');

@@ -41,12 +41,12 @@ const REQ_HEADERS = {
 const VARY = process.env.VARY === '1';
 // READBODY=1 makes the stream-API handler consume the request body, so that an
 // upload workload really measures upload handling on both servers. See the same
-// knob in bench/h2lite-h2.js.
+// knob in bench/h2lean-h2.js.
 const READBODY = process.env.READBODY === '1';
 // TLS=1 serves the same workload over h2s instead of h2c.
 const TLS = process.env.TLS === '1';
 // UNIQ=1 puts a unique value in every RESPONSE: no two responses carry the same
-// header block. The same knob in bench/h2lite-h2.js, so the two arms are measured
+// header block. The same knob in bench/h2lean-h2.js, so the two arms are measured
 // on the same work.
 const UNIQ = process.env.UNIQ === '1';
 const certificates = require('../test/fixtures-tls');

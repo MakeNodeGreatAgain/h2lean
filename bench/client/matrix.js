@@ -1,5 +1,5 @@
 // Paired client benchmark: the same request loop written against node:http2 and
-// against h2lite, both talking to the same nghttpd recipe, in ABBA-interleaved
+// against h2lean, both talking to the same nghttpd recipe, in ABBA-interleaved
 // rounds, aggregated by median. This is M3's measurement harness; the claim it
 // exists to support is "drop-in AND faster", and it is built to fail that claim
 // honestly:
@@ -111,13 +111,13 @@ fs.writeFileSync(path.join(__dirname, '..', '..', 'out', 'client-raw.json'),
   }, null, 2));
 
 // Summary: the paired ratio per body, with the verdict gated on noise.
-console.log('\nbody        node us/req  h2lite us/req  cpu ratio (node/h2lite)  verdict');
+console.log('\nbody        node us/req  h2lean us/req  cpu ratio (node/h2lean)  verdict');
 for (const n of bodies) {
   const base = agg[BASELINE][n];
-  const lite = agg['h2lite client'][n];
+  const lite = agg['h2lean client'][n];
   const ratio = base.cpu / lite.cpu;
   const floor = Math.max(base.spread, lite.spread);
-  const verdict = ratio > 1 + floor / 100 ? 'h2lite faster (outside spread)'
+  const verdict = ratio > 1 + floor / 100 ? 'h2lean faster (outside spread)'
     : ratio < 1 - floor / 100 ? 'node faster (outside spread)'
       : 'INSIDE NOISE';
   console.log(`${String(n).padEnd(11)} ${fmt(base.cpu, 3).padStart(13)} ${fmt(lite.cpu, 3).padStart(14)}` +

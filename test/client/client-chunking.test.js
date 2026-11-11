@@ -3,7 +3,7 @@
 //
 // Node delivers a payload in the pieces it arrived in, not in one piece per frame:
 // a frame whose payload was cut in two reaches node's client as several chunks
-// (tools/probe-chunking.js). h2lite's client used to assemble such a payload
+// (tools/probe-chunking.js). h2lean's client used to assemble such a payload
 // into a buffer of its own -- one memcpy of the whole payload -- and hand it over
 // as a single chunk, which is both the copy and a divergence from node.
 //
@@ -20,7 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const f = require('../../lib/frames');
 
 const PAYLOAD = 16384;
@@ -35,7 +35,7 @@ function frame(type, flags, sid, payload) {
 // ends inside the frame.
 //
 // The server sends its SETTINGS as soon as the connection is up and waits for the
-// request's HEADERS frame before it answers. Both halves matter: h2lite's client
+// request's HEADERS frame before it answers. Both halves matter: h2lean's client
 // holds its first request back until the peer's SETTINGS have been applied
 // (lib/client-session.js, _enqueue), so a server that answers SETTINGS only after
 // the request deadlocks against it; and answering on the client's preface instead
@@ -174,9 +174,9 @@ test('a payload cut across two reads arrives in pieces, like node\'s', async () 
   const { srv, sockets } = await rawServer();
   try {
     const node = await grab(http2, srv.address().port);
-    const ours = await grab(h2lite, srv.address().port);
+    const ours = await grab(h2lean, srv.address().port);
     assert.ok(node.length > 1, `node delivered the payload in ${node.length} piece(s)`);
-    assert.ok(ours.length > 1, `h2lite delivered the payload in ${ours.length} piece(s)`);
+    assert.ok(ours.length > 1, `h2lean delivered the payload in ${ours.length} piece(s)`);
     assert.deepStrictEqual(Buffer.concat(ours), Buffer.concat(node));
     assert.strictEqual(Buffer.concat(ours).length, PAYLOAD);
   } finally {
@@ -200,9 +200,9 @@ test('a response header block that straddles two reads is decoded', async () => 
   for (const shape of shapes) {
     const { srv, sockets } = await rawServer({ headerCut: shape.cut });
     try {
-      const ours = await grabHeaders(h2lite, srv.address().port);
+      const ours = await grabHeaders(h2lean, srv.address().port);
       assert.strictEqual(ours.headers[':status'], 200,
-        `h2lite saw ${ours.headers[':status']} (${shape.name})`);
+        `h2lean saw ${ours.headers[':status']} (${shape.name})`);
       // The block was decoded out of the views it arrived in, not out of a copy.
       assert.ok(ours.pieces > 0,
         `the block was not decoded out of the pieces (${shape.name})`);
@@ -234,13 +234,13 @@ test('a padded payload that straddles two reads arrives without its padding', as
   for (const shape of shapes) {
     const { srv, sockets } = await rawServer({ padded: true, cuts: shape.cuts, size: SIZE });
     try {
-      const ours = await grab(h2lite, srv.address().port);
+      const ours = await grab(h2lean, srv.address().port);
       assert.strictEqual(Buffer.concat(ours).length, SIZE,
         `the padding is not part of the body (${shape.name})`);
       // The frame was not assembled: the payload arrives in the pieces it was read
       // in, with the padding trimmed off the first and the last of them.
       assert.ok(ours.length > 1,
-        `h2lite delivered the padded payload in ${ours.length} piece(s) (${shape.name})`);
+        `h2lean delivered the padded payload in ${ours.length} piece(s) (${shape.name})`);
       const expect = Buffer.alloc(SIZE);
       for (let i = 0; i < SIZE; i++) {
         expect[i] = i & 0xff;

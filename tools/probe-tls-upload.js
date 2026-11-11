@@ -1,9 +1,9 @@
-// Focused repro probe: N sequential uploads against h2lite, over h2s or h2c, with
+// Focused repro probe: N sequential uploads against h2lean, over h2s or h2c, with
 // the server's outbound frames decoded and every reset/goaway logged.
 //   PLAIN=1 node tools/probe-tls-upload.js [bodyBytes] [rounds]
 'use strict';
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 const certificates = require('../test/fixtures-tls');
 
@@ -16,7 +16,7 @@ const NAMES = { 0: 'DATA', 1: 'HEADERS', 3: 'RST_STREAM', 4: 'SETTINGS', 6: 'PIN
   7: 'GOAWAY', 8: 'WINDOW_UPDATE', 9: 'CONTINUATION' };
 
 const srv = PLAIN
-  ? h2lite.createServer((req, res) => {
+  ? h2lean.createServer((req, res) => {
     let got = 0;
     req.on('data', (d) => {
       got += d.length;
@@ -28,7 +28,7 @@ const srv = PLAIN
     });
     req.on('error', (e) => console.log('  [srv] req error', e.code));
   })
-  : h2lite.createSecureServer(certificates(), (req, res) => {
+  : h2lean.createSecureServer(certificates(), (req, res) => {
     let got = 0;
     req.on('data', (d) => {
       got += d.length;

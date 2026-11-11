@@ -13,13 +13,13 @@ const net = require('node:net');
 const fastTimer = require('../lib/fast-timer');
 
 // NATIVE=1 forces the session idle timeout back onto plain timers, so the same
-// script measures both routings. It has to happen before h2lite is required,
+// script measures both routings. It has to happen before h2lean is required,
 // because lib/session.js picks the functions up at load time.
 if (process.env.NATIVE === '1') {
   fastTimer.setTimeout = (cb, delay, arg) => setTimeout(cb, delay, arg);
   fastTimer.clearTimeout = (t) => clearTimeout(t);
 }
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const N = Number(process.env.N || 20000);
 const CONNS = Number(process.env.CONNS || 500);
@@ -91,7 +91,7 @@ function countTimers(fn) {
 }
 
 async function storm(armMs) {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('session', (session) => {
     // a keep-alive idle timeout, which is the case FastTimer exists for
     if (armMs) {

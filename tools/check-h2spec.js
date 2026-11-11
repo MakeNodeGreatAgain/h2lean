@@ -1,14 +1,14 @@
 // Runs h2spec, the conformance tool for RFC 7540 and RFC 7541, against node:http2 and against
-// h2lite on the same application script, and reports the checks the two answers disagree on.
+// h2lean on the same application script, and reports the checks the two answers disagree on.
 //
-// The node arm is what makes the output readable. h2lite is built to match node, so a check
+// The node arm is what makes the output readable. h2lean is built to match node, so a check
 // that BOTH stacks fail is a place where node itself deviates from the specification, or where
 // the check quotes RFC 7540 wording that RFC 9113 changed -- parity says leave it alone. A check
-// only h2lite fails is a bug here. Without the control arm those two classes come out of the
+// only h2lean fails is a bug here. Without the control arm those two classes come out of the
 // tool looking identical, and the honest reaction to a red list is then either panic or a shrug.
 //
 //   node tools/check-h2spec.js                    -> h2c and TLS, both stacks
-//   node tools/check-h2spec.js h2lite             -> one stack, its full list printed
+//   node tools/check-h2spec.js h2lean             -> one stack, its full list printed
 //   node tools/check-h2spec.js node tls           -> one stack, one transport
 //   SPEC=http2/6.5 node tools/check-h2spec.js     -> one section
 //   CAP=120 node tools/check-h2spec.js            -> seconds before a stuck h2spec is killed
@@ -18,14 +18,14 @@
 // Go program, so it is installed out of band and H2SPEC points at the copy. A handful of failing
 // arms are RFC 9113 divergences of the 7540-era tool, documented in AGENTS.md §10 and carved out
 // of the bug count by the DOCUMENTED map below (they are still printed, under their own heading).
-// Exit codes: 0 no h2lite-only failure outside that documented set, 1 there is at least one,
+// Exit codes: 0 no h2lean-only failure outside that documented set, 1 there is at least one,
 // 2 no binary found.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { XMLParser } = require('fast-xml-parser'); // the one devDependency; runtime stays dependency-free
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const certificates = require('../test/fixtures-tls');
 const { listen, closeServer } = require('../test/diff-harness');
@@ -33,7 +33,7 @@ const { listen, closeServer } = require('../test/diff-harness');
 const H2SPEC = process.env.H2SPEC || 'h2spec';
 const OUT = path.join(__dirname, '..', 'out', 'h2spec');
 const PAIR = certificates();
-const IMPLS = [['node', nodeHttp2], ['h2lite', h2lite]];
+const IMPLS = [['node', nodeHttp2], ['h2lean', h2lean]];
 
 // h2spec states what it needs of a server before it runs anything: GET / and POST / answered
 // with 200 and non-empty data. The answer goes out without reading the request -- the tool's own
@@ -59,7 +59,7 @@ function serve(impl, tls) {
 //   * a protocol failure is an <error> CHILD, not a <failure> one -- only generic/ and hpack/ reach
 //     the <failure> path, so counting that tag alone made every http2/5.x, 6.x and 8.x regression
 //     invisible while still reporting "0 of 146 checks failed" (measured on h2spec 2.6.0 against
-//     both stacks: the console said 21 failed for h2lite and 13 for node, the <failure>-only parse
+//     both stacks: the console said 21 failed for h2lean and 13 for node, the <failure>-only parse
 //     said 0 for both, all 21 sitting in <error>). Both tags count here.
 //   * a <testcase> identifies itself by package= (the spec section) and classname= (the check);
 //     the testsuite element owns the name=. Reading name= off the testcase matches nothing and
@@ -102,7 +102,7 @@ function failures(file) {
 // of these checks wording RFC 9113 relaxed to a "MAY ... connection error" (discarding the frame is
 // conforming, the tool just waits for an error it permits but does not require and times out), and
 // the fourth checks a self-dependency rule RFC 9113 dropped with the priority signalling (RFC 9218).
-// They are carved out of the h2lite-only bug count so a red run reads as the tool's stale
+// They are carved out of the h2lean-only bug count so a red run reads as the tool's stale
 // expectation, not as work here -- but they are still PRINTED, because "documented" is not
 // "invisible". The keys are the exact `package: classname` strings h2spec writes; keep them in step
 // with the §10 table, and add a §10 write-up before adding a key here.
@@ -232,13 +232,13 @@ function sample(srv) {
         }
       }
     }
-    if (lists.node && lists.h2lite) {
+    if (lists.node && lists.h2lean) {
       // Carve the documented RFC-divergence arms (§10) out first: they are the tool's stale RFC 7540
-      // expectation, not bugs, so they must not reach the h2lite-only count that drives the exit
+      // expectation, not bugs, so they must not reach the h2lean-only count that drives the exit
       // code. They are reported under their own heading, and the three buckets below then speak
       // only about checks whose answer is genuinely in this repository's hands.
-      const doc = [...new Set([...lists.h2lite, ...lists.node].filter((f) => DOCUMENTED.has(f)))];
-      const hl = lists.h2lite.filter((f) => !DOCUMENTED.has(f));
+      const doc = [...new Set([...lists.h2lean, ...lists.node].filter((f) => DOCUMENTED.has(f)))];
+      const hl = lists.h2lean.filter((f) => !DOCUMENTED.has(f));
       const nd = lists.node.filter((f) => !DOCUMENTED.has(f));
       const nodeF = new Set(nd);
       const only = hl.filter((f) => !nodeF.has(f));
@@ -252,7 +252,7 @@ function sample(srv) {
           console.log(`  = ${f} :: ${DOCUMENTED.get(f)}`);
         }
       }
-      console.log(`${transport}: h2lite-only (${only.length}) -- bugs to fix here`);
+      console.log(`${transport}: h2lean-only (${only.length}) -- bugs to fix here`);
       for (const f of only) {
         console.log(`  * ${f}`);
       }
@@ -260,7 +260,7 @@ function sample(srv) {
       for (const f of shared) {
         console.log(`  - ${f}`);
       }
-      console.log(`${transport}: node-only (${notUs.length}) -- h2lite answers differently`);
+      console.log(`${transport}: node-only (${notUs.length}) -- h2lean answers differently`);
       for (const f of notUs) {
         console.log(`  + ${f}`);
       }

@@ -4,7 +4,7 @@
 // a change in either one fails here instead of surfacing as an interop difference.
 //
 // Measured numbers:
-//   a block split into HEADERS + CONTINUATION  -- node serves it. h2lite hung the stream
+//   a block split into HEADERS + CONTINUATION  -- node serves it. h2lean hung the stream
 //     instead, because lib/frames.js had CONTINUATION = 10 where RFC 9113 6.10 says 9;
 //     both ends of our own tests used the same wrong number, which is exactly why a
 //     differential test is the only thing that could have caught it.
@@ -17,7 +17,7 @@
 //     is exempt from the frame size limit, so the entry count is the only bound.
 //   a frame before the client's own SETTINGS   -- node: GOAWAY PROTOCOL_ERROR
 //     'SETTINGS expected' for HEADERS, PING and a SETTINGS carrying ACK alike
-//     (RFC 9113 3.4). h2lite used to accept all three and answer them normally.
+//     (RFC 9113 3.4). h2lean used to accept all three and answer them normally.
 //     Version-dependent on the node arm: node 24+ bundles an nghttp2 that answers
 //     PROTOCOL_ERROR 'SETTINGS expected' (measured on v26.12.1), while node 20/22
 //     bundle an older nghttp2 that answers INTERNAL_ERROR with no debug data --
@@ -27,7 +27,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const { listen, closeServer } = require('./diff-harness');
 
 const CODES = { 1: 'PROTOCOL_ERROR', 2: 'INTERNAL_ERROR', 11: 'ENHANCE_YOUR_CALM' };
@@ -81,7 +81,7 @@ function drive(port, send) {
           seen.push('GOAWAY:' + (CODES[payload.readUInt32BE(4)] || payload.readUInt32BE(4)));
         } else if (type === f.RST_STREAM) {
           // RST_STREAM(NO_ERROR) is how a server tears down a stream it has finished
-          // answering while the request side is still open -- node does it, h2lite does
+          // answering while the request side is still open -- node does it, h2lean does
           // it, and when depends on timing. It says nothing about the verdict, so it is
           // not recorded. Any other code is a refusal and stays in the transcript.
           const code = payload.readUInt32BE(0);
@@ -111,7 +111,7 @@ function drive(port, send) {
 // One server per scenario, both implementations, one assertion pair.
 async function both(name, send, wantSeen, wantServed) {
   const fails = [];
-  for (const impl of [h2lite, require('node:http2')]) {
+  for (const impl of [h2lean, require('node:http2')]) {
     const srv = impl.createServer();
     srv.on('stream', (stream) => {
       // a body-less response: 'HEADERS' in the log means the request reached the app
@@ -122,10 +122,10 @@ async function both(name, send, wantSeen, wantServed) {
     const port = await listen(srv);
     const got = await drive(port, send);
     if (wantSeen !== undefined && got.seen !== wantSeen) {
-      fails.push(`${impl === h2lite ? 'h2lite' : 'node'}: wanted [${wantSeen}], got [${got.seen}]`);
+      fails.push(`${impl === h2lean ? 'h2lean' : 'node'}: wanted [${wantSeen}], got [${got.seen}]`);
     }
     if (wantServed !== undefined && got.served !== wantServed) {
-      fails.push(`${impl === h2lite ? 'h2lite' : 'node'}: wanted served=${wantServed},`
+      fails.push(`${impl === h2lean ? 'h2lean' : 'node'}: wanted served=${wantServed},`
         + ` got served=${got.served}`);
     }
     await closeServer(srv);
@@ -149,7 +149,7 @@ test('a header block split over HEADERS and CONTINUATION is served', async () =>
 test('a frame that interrupts an unfinished block kills the connection', async () => {
   // RFC 9113 6.10: while a header block is pending, the only frames allowed are
   // CONTINUATION frames of the same stream. All five of these were measured on node,
-  // which answers GOAWAY PROTOCOL_ERROR for every one; h2lite used to serve the request.
+  // which answers GOAWAY PROTOCOL_ERROR for every one; h2lean used to serve the request.
   const interrupts = [
     ['SETTINGS', frame(f.SETTINGS, 0, 0, Buffer.alloc(0))],
     ['PING', frame(f.PING, 0, 0, Buffer.alloc(8))],
@@ -209,7 +209,7 @@ test('the CONTINUATION counter restarts for the next block', async () => {
   // The bound is per block, not per connection: h2load and curl split large header sets
   // routinely, and a counter that was never reset would refuse a healthy connection after
   // a few responses. Guard for `this._hdrCont = 0` in _beginHeaders.
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let served = 0;
   srv.on('stream', (stream) => {
     served++;
@@ -293,7 +293,7 @@ test('the client\'s first frame has to be a SETTINGS without the ACK flag', asyn
   ];
   for (const [label, first] of cases) {
     const answers = [];
-    for (const impl of [h2lite, require('node:http2')]) {
+    for (const impl of [h2lean, require('node:http2')]) {
       const srv = impl.createServer();
       srv.on('stream', (stream) => {
         stream.respond({ ':status': 200 }, { endStream: true });
@@ -304,7 +304,7 @@ test('the client\'s first frame has to be a SETTINGS without the ACK flag', asyn
       answers.push(await driveFirstFrame(port, first));
       await closeServer(srv);
     }
-    // The two stacks must agree, modulo the bundled-nghttp2 verdict: h2lite pins the
+    // The two stacks must agree, modulo the bundled-nghttp2 verdict: h2lean pins the
     // node 24+ answer; node 20/22 bundle an older nghttp2 that says INTERNAL_ERROR with
     // no debug data for the same violation (measured, see the header of this file).
     assert.strictEqual(answers[0], 'GOAWAY:PROTOCOL_ERROR "SETTINGS expected"', label);
@@ -368,18 +368,18 @@ async function firstServerSettings(impl, opts, mutate) {
 
 test('a server with no settings advertised emits an empty SETTINGS frame', async () => {
   const [lite, node] = await Promise.all([
-    firstServerSettings(h2lite, {}),
+    firstServerSettings(h2lean, {}),
     firstServerSettings(require('node:http2'), {})
   ]);
   assert.deepStrictEqual(node.entries, [], 'node must emit no settings by default');
   assert.deepStrictEqual(lite.entries, node.entries,
-    'h2lite must match node: advertise nothing the application did not set');
+    'h2lean must match node: advertise nothing the application did not set');
 });
 
 test('a server with configured settings advertises exactly those', async () => {
   const opts = { settings: { maxConcurrentStreams: 100, maxFrameSize: 32768 } };
   const [lite, node] = await Promise.all([
-    firstServerSettings(h2lite, opts),
+    firstServerSettings(h2lean, opts),
     firstServerSettings(require('node:http2'), opts)
   ]);
   assert.deepStrictEqual(node.entries, ['maxConcurrentStreams=100', 'maxFrameSize=32768'].sort());
@@ -388,7 +388,7 @@ test('a server with configured settings advertises exactly those', async () => {
 
 test('updateSettings on a bare server advertises the updated value', async () => {
   const [lite, node] = await Promise.all([
-    firstServerSettings(h2lite, {}, { maxConcurrentStreams: 7 }),
+    firstServerSettings(h2lean, {}, { maxConcurrentStreams: 7 }),
     firstServerSettings(require('node:http2'), {}, { maxConcurrentStreams: 7 })
   ]);
   assert.deepStrictEqual(node.entries, ['maxConcurrentStreams=7']);
@@ -399,7 +399,7 @@ test('configured + updateSettings advertises both values', async () => {
   const opts = { settings: { maxFrameSize: 32768 } };
   const mutate = { maxConcurrentStreams: 7 };
   const [lite, node] = await Promise.all([
-    firstServerSettings(h2lite, opts, mutate),
+    firstServerSettings(h2lean, opts, mutate),
     firstServerSettings(require('node:http2'), opts, mutate)
   ]);
   assert.deepStrictEqual(node.entries, ['maxConcurrentStreams=7', 'maxFrameSize=32768'].sort());

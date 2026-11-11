@@ -13,7 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const f = require('../../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -125,7 +125,7 @@ async function run(impl, answerFrames) {
 }
 
 async function assertRefusalParity(answerFrames, refuseName, expectResponse) {
-  for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const { events, got } = await run(impl, answerFrames);
     const joined = events.join(' | ');
     const rst = got.find((g) => g.type === f.RST_STREAM);

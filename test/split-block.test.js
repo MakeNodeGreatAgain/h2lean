@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 // :method POST (3), :path / (4) and :scheme http (6) are static indexes; the
 // :authority and the x-split field are literals, so the block holds octets that
@@ -98,7 +98,7 @@ function exchange(impl, cut) {
           }
           // The response block is decoded with the same decoder the server uses:
           // the fields it carries are the answer this test compares.
-          const dec = new h2lite.HPack.Decoder(4096);
+          const dec = new h2lean.HPack.Decoder(4096);
           const fields = [];
           dec.decode(fr.payload, 0, fr.payload.length, fields);
           for (let i = 0; i < fields.length; i += 2) {
@@ -131,10 +131,10 @@ const CUTS = [5, 8, 9, 10, 12, 16, 20, 26, 30, 34, 40, 49];
 
 test('a request block split across two reads is decoded like node\'s', async () => {
   for (const cut of CUTS) {
-    const ours = await exchange(h2lite, cut);
+    const ours = await exchange(h2lean, cut);
     const node = await exchange(http2, cut);
     assert.deepStrictEqual(ours.fields, node.fields, `cut at ${cut}: the fields differ`);
-    assert.strictEqual(ours.status, 200, `cut at ${cut}: h2lite answered ${ours.status}`);
+    assert.strictEqual(ours.status, 200, `cut at ${cut}: h2lean answered ${ours.status}`);
     assert.strictEqual(node.status, 200, `cut at ${cut}: node answered ${node.status}`);
     assert.strictEqual(ours.fields['x-split'], 'value', `cut at ${cut}: the literal was lost`);
     assert.strictEqual(ours.fields[':authority'], 'localhost', `cut at ${cut}: the authority was lost`);

@@ -13,7 +13,7 @@
 'use strict';
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const f = require('../lib/frames');
 
 const BODY = 65536;
@@ -87,7 +87,7 @@ function run(impl) {
     const { srv, state, sockets } = rawServer();
     srv.listen(0, '127.0.0.1', () => {
       const url = `http://127.0.0.1:${srv.address().port}`;
-      const session = impl === 'node' ? http2.connect(url) : h2lite.connect(url);
+      const session = impl === 'node' ? http2.connect(url) : h2lean.connect(url);
       session.on('error', (e) => {
         state.frames.push({ t: -1, type: 'session error', sid: 0, len: 0, msg: e.code || e.message });
       });
@@ -120,7 +120,7 @@ function run(impl) {
 }
 
 (async () => {
-  for (const impl of ['node', 'h2lite']) {
+  for (const impl of ['node', 'h2lean']) {
     const st = await run(impl);
     console.log(`--- ${impl}`);
     console.log(`    request HEADERS on streams: ${st.headers.join(', ')}`);

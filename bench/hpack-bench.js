@@ -122,7 +122,7 @@ capture().then((blocks) => {
   const enc = new Encoder();
   const dst = Buffer.allocUnsafe(8192);
   const fields = [[':status', '200'], ['content-type', 'text/plain'],
-    ['server', 'h2lite'], ['x-trace', '0123456789abcdef0123456789abcdef']];
+    ['server', 'h2lean'], ['x-trace', '0123456789abcdef0123456789abcdef']];
   for (const [n, v] of fields) {
     enc.write(dst, 0, n, v, false);
   } // warm the cache
@@ -133,7 +133,7 @@ capture().then((blocks) => {
     }
     globalThis.off = off;
   }, 200_000);
-  const obj = { ':status': '200', 'content-type': 'text/plain', server: 'h2lite',
+  const obj = { ':status': '200', 'content-type': 'text/plain', server: 'h2lean',
     'x-trace': '0123456789abcdef0123456789abcdef' };
   const noErr = () => undefined;
   const nodeNs = time('node buildNgHeaderString(same 4)      ', () => {

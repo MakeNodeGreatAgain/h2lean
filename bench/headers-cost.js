@@ -106,11 +106,11 @@ time('latin1Slice(block) only                   ', () => {
 
 console.log('\n--- response path: cache the whole encoded block by object identity ---');
 const RESP_HEADERS = Object.freeze({
-  ':status': '200', 'content-type': 'text/plain', server: 'h2lite',
+  ':status': '200', 'content-type': 'text/plain', server: 'h2lean',
   'x-trace': '0123456789abcdef0123456789abcdef'
 });
 const BYTES = Buffer.from([0x88, 0x10, 0x0a, ...Buffer.from('text/plain'), 0x00, 0x06,
-  ...Buffer.from('server'), 0x06, ...Buffer.from('h2lite')]);
+  ...Buffer.from('server'), 0x06, ...Buffer.from('h2lean')]);
 const WM = new WeakMap([[RESP_HEADERS, BYTES]]);
 const outBuf = Buffer.allocUnsafe(1024);
 time('WeakMap.get(userHeadersObj) + memcpy      ', () => {

@@ -1,5 +1,5 @@
 // What node:http2 answers to the inbound frames whose bounds test/inbound-limits.test.js
-// pins. One raw client per case, the same case run against node and against h2lite, the two
+// pins. One raw client per case, the same case run against node and against h2lean, the two
 // transcripts printed together -- so every expectation in the test file was measured here
 // first rather than recalled.
 //
@@ -8,7 +8,7 @@
 'use strict';
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen } = require('../test/diff-harness');
 
@@ -402,7 +402,7 @@ const cases = [
     sock.write(frame(f.DATA, EOS, 1, Buffer.from('test', 'ascii')));
   }],
   // NOT the legal shape it looks like: END_STREAM is already on the DATA, so the trailers arrive
-  // for a stream that has finished. node answers GOAWAY(STREAM_CLOSED), h2lite resets the stream.
+  // for a stream that has finished. node answers GOAWAY(STREAM_CLOSED), h2lean resets the stream.
   // Pinned as a divergence to be decided, not as a case that passes.
   ['P9 content-length 4 with DATA 4 and END_STREAM, then trailers AFTER the stream closed', undefined, (sock) => {
     sock.write(frame(f.HEADERS, EOH, 1, Buffer.concat([REQ, Buffer.from('5c0134', 'hex')])));
@@ -584,7 +584,7 @@ const cases = [
     sock.write(frame(f.HEADERS, EOH | EOS, 3, REQ));
   }],
   // the same rule told by the frame that carried the END_STREAM instead of the HEADERS: the stream
-  // is in the table (nothing was answered), so h2lite reaches the state check rather than the
+  // is in the table (nothing was answered), so h2lean reaches the state check rather than the
   // history check, and node still has its record. U10-U13 below are the shapes that decide which
   // of the two "the stream is gone" memories may ever answer with a verdict.
   ['U10 HEADERS, DATA|END_STREAM, then a second DATA -- the handler never answers', undefined,
@@ -744,7 +744,7 @@ function drive(port, send, respond, gap) {
       continue;
     }
     const got = {};
-    for (const [name, impl] of [['node', nodeHttp2], ['h2lite', h2lite]]) {
+    for (const [name, impl] of [['node', nodeHttp2], ['h2lean', h2lean]]) {
       if (only !== undefined && only !== name) {
         got[name] = '-'; continue;
       }
@@ -780,7 +780,7 @@ function drive(port, send, respond, gap) {
           + `${(srv.settings || {}).maxHeaderListSize}`);
       }
     }
-    console.log(`\n${label}\n    node   -> ${got.node}\n    h2lite -> ${got.h2lite}`
-      + (got.node === got.h2lite ? '' : '   <<< DIFFERS'));
+    console.log(`\n${label}\n    node   -> ${got.node}\n    h2lean -> ${got.h2lean}`
+      + (got.node === got.h2lean ? '' : '   <<< DIFFERS'));
   }
 })();

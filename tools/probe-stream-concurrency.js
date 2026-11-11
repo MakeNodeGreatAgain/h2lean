@@ -1,13 +1,13 @@
 // Replays the traffic h2spec's http2/5.1.2 check generates -- a flood of HEADERS frames with
 // increasing odd stream ids on ONE connection, from a peer that never sends a WINDOW_UPDATE --
-// against node:http2 and against h2lite, and reports how much each stack retains per stream.
+// against node:http2 and against h2lean, and reports how much each stack retains per stream.
 //
 //   node tools/probe-stream-concurrency.js                 -> both stacks, 150k streams each
-//   N=400000 MACHINE=h2lite node tools/probe-stream-concurrency.js  -> one stack, more streams
+//   N=400000 MACHINE=h2lean node tools/probe-stream-concurrency.js  -> one stack, more streams
 //   node --expose-gc tools/probe-stream-concurrency.js     -> collect before the final number
 //
 // Why a replay and not the tool: h2spec decides how many streams to send from the
-// SETTINGS_MAX_CONCURRENT_STREAMS the server advertises, and sends that many plus one. h2lite
+// SETTINGS_MAX_CONCURRENT_STREAMS the server advertises, and sends that many plus one. h2lean
 // advertises 4294967295, so the tool loops for hours; node advertises nothing, so the tool skips
 // the check and says nothing about what happens under the traffic. The frames below are the ones a
 // recorder counted off a real run, which makes the comparison measurable on both stacks.
@@ -18,15 +18,15 @@
 // is parked in -- that is the quantity reported, in bytes per stream, on both stacks.
 'use strict';
 const net = require('node:net');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const f = require('../lib/frames');
 const { listen, closeServer } = require('../test/diff-harness');
 
 const N = parseInt(process.env.N, 10) || 150000;
 const IMPLS = process.env.MACHINE
-  ? [[process.env.MACHINE, process.env.MACHINE === 'node' ? nodeHttp2 : h2lite]]
-  : [['node', nodeHttp2], ['h2lite', h2lite]];
+  ? [[process.env.MACHINE, process.env.MACHINE === 'node' ? nodeHttp2 : h2lean]]
+  : [['node', nodeHttp2], ['h2lean', h2lean]];
 
 // :method GET, :path /, :scheme http from the static table, then :authority as a literal with an
 // indexed name -- the same 16-octet block the requests h2spec sends carry.

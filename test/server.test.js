@@ -1,11 +1,11 @@
-// End-to-end tests of the h2lite server driven by node:http2's client, i.e. by
+// End-to-end tests of the h2lean server driven by node:http2's client, i.e. by
 // a real nghttp2 peer. Everything here is a wire test: if the framing, HPACK,
 // flow control or GOAWAY handling is wrong, the client notices first.
 const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -40,7 +40,7 @@ function request(client, headers, body) {
 const GET = { ':method': 'GET', ':path': '/index.html', accept: '*/*' };
 
 test('GET with a small body', async () => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream, headers) => {
     stream.respond({
       ':status': 200,
@@ -63,7 +63,7 @@ test('GET with a small body', async () => {
 
 test('frozen response headers take the cached-block path', async () => {
   const HEADERS = Object.freeze({ ':status': 200, 'x-cached': 'yes' });
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond(HEADERS, { endStream: true }));
   const port = await listen(srv);
   const client = connect(port);
@@ -79,7 +79,7 @@ test('frozen response headers take the cached-block path', async () => {
 test('a 300 KB response crosses the flow-control window and frame size', async () => {
   const size = 300 * 1024;
   const body = Buffer.alloc(size, 0x61);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => {
     stream.respond({ ':status': 200, 'content-length': String(size) });
     // write in pieces so the window has to be replenished mid-stream
@@ -102,7 +102,7 @@ test('a 300 KB response crosses the flow-control window and frame size', async (
 
 test('request body is delivered with correct bytes and ends the stream', async () => {
   const payload = 'x'.repeat(70 * 1024); // larger than one read buffer
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   const seen = [];
   srv.on('stream', (stream, headers) => {
     assert.strictEqual(headers[':method'], 'POST');
@@ -130,7 +130,7 @@ test('request body is delivered with correct bytes and ends the stream', async (
 
 test('delivered chunks are Buffer views and the body arrives identical', async () => {
   const payload = 'y'.repeat(20000);
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => {
     let total = 0;
     stream.on('data', (d) => {
@@ -152,7 +152,7 @@ test('delivered chunks are Buffer views and the body arrives identical', async (
 });
 
 test('50 concurrent streams on one connection', async () => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream, headers) => {
     stream.respond({ ':status': 200, 'x-id': headers[':path'] });
     stream.end(headers[':path']);
@@ -169,7 +169,7 @@ test('50 concurrent streams on one connection', async () => {
   });
 });
 
-test('h2lite decodes the same request headers node:http2 does', async () => {
+test('h2lean decodes the same request headers node:http2 does', async () => {
   const SET = {
     ':method': 'GET',
     ':path': '/abc/def?q=1&r=2',
@@ -222,7 +222,7 @@ test('h2lite decodes the same request headers node:http2 does', async () => {
 
   // our answer
   const ours = [];
-  const srv2 = h2lite.createServer();
+  const srv2 = h2lean.createServer();
   srv2.on('stream', (stream, headers) => {
     ours.push({ ...headers });
     stream.respond({ ':status': 200 }, { endStream: true });
@@ -231,7 +231,7 @@ test('h2lite decodes the same request headers node:http2 does', async () => {
   await run(connect(port2));
   srv2.close();
 
-  assert.ok(ours.length >= 4, `h2lite saw ${ours.length} streams`);
+  assert.ok(ours.length >= 4, `h2lean saw ${ours.length} streams`);
   assert.ok(nativeOut.length >= 4);
   for (let i = 0; i < 4; i++) {
     const a = { ...ours[i] };
@@ -247,7 +247,7 @@ test('h2lite decodes the same request headers node:http2 does', async () => {
 
 test('session setTimeout measures silence, not wall clock', async () => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
   const port = await listen(srv);
   const client = connect(port);
@@ -279,7 +279,7 @@ test('session setTimeout measures silence, not wall clock', async () => {
 });
 
 test('a finished stream releases its slot (maxConcurrentStreams=1, 5 sequential)', async () => {
-  const srv = h2lite.createServer({ settings: { maxConcurrentStreams: 1 } });
+  const srv = h2lean.createServer({ settings: { maxConcurrentStreams: 1 } });
   srv.on('stream', (stream, headers) => {
     stream.respond({ ':status': 200, 'x-path': headers[':path'] });
     stream.end();
@@ -302,7 +302,7 @@ test('a finished stream releases its slot (maxConcurrentStreams=1, 5 sequential)
 });
 
 test('a bad connection preface is refused with GOAWAY PROTOCOL_ERROR', async () => {
-  const srv = h2lite.createServer();
+  const srv = h2lean.createServer();
   let sawStream = false;
   srv.on('stream', () => {
     sawStream = true;
@@ -337,7 +337,7 @@ test('a bad connection preface is refused with GOAWAY PROTOCOL_ERROR', async () 
 });
 
 test('maxConcurrentStreams refuses what it will not serve', async () => {
-  const srv = h2lite.createServer({ settings: { maxConcurrentStreams: 1 } });
+  const srv = h2lean.createServer({ settings: { maxConcurrentStreams: 1 } });
   const held = [];
   srv.on('stream', (stream) => {
     held.push(stream);

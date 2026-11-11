@@ -5,7 +5,7 @@
 // asserted against both stacks, so a change in either one fails here instead of turning into an
 // interop difference somebody finds in production.
 //
-// The measured rules, and where h2lite used to disagree:
+// The measured rules, and where h2lean used to disagree:
 //
 //   * a frame longer than the advertised SETTINGS_MAX_FRAME_SIZE is a connection error, and the
 //     boundary is INCLUSIVE: 16 384 octets of DATA are served, 16 385 bring GOAWAY
@@ -17,14 +17,14 @@
 //     entry at name + value + 32, and that is what node counts. Measured, a 4-field block whose
 //     names and values total 46 octets is REFUSED under a limit of 48 (46 + 4*32 = 174), and a
 //     5-field block is served at 87 decoded octets and refused at 93 under a limit of 250, which
-//     puts the line exactly at 250 - 5*32 = 90. h2lite compared the plain sum and served three
+//     puts the line exactly at 250 - 5*32 = 90. h2lean compared the plain sum and served three
 //     of those blocks, and it also compared the COMPRESSED length of the block while assembling
 //     it -- which turned one oversized request into GOAWAY(PROTOCOL_ERROR) for the whole
 //     connection.
 //   * the answer to an oversized header LIST is RST_STREAM(ENHANCE_YOUR_CALM) -- RFC 9113 6.5.2
 //     makes the advertised limit advisory and 7 gives the code for a peer generating excessive
 //     load -- and it is per stream: after refusing stream 1, node answers a legal stream 3 on the
-//     same connection. h2lite refused with PROTOCOL_ERROR.
+//     same connection. h2lean refused with PROTOCOL_ERROR.
 //   * a literal whose length prefix announces more than the frame contains is a HPACK failure:
 //     GOAWAY(COMPRESSION_ERROR), whether the claim is 2 000 000 or 2 000 000 000 octets. Both
 //     stacks answer the same code; the one thing they do not agree on is the last-stream id in
@@ -33,11 +33,11 @@
 //     request that follows it is served. Type 99 and 0xff behave the same.
 //   * one frame can break two rules at once, and the two stacks then disagree about which rule
 //     they report: a header frame that is over SETTINGS_MAX_FRAME_SIZE and does not decode as
-//     HPACK gets COMPRESSION_ERROR from node and FRAME_SIZE_ERROR from h2lite. Pinned below.
+//     HPACK gets COMPRESSION_ERROR from node and FRAME_SIZE_ERROR from h2lean. Pinned below.
 //
 // The second half of the file, added later and measured the same way, covers the frame-state and
 // message-framing rules of RFC 9113 5.1, 6.5, 6.7, 8.1, 8.2 and RFC 7541 6.3 -- each of them a
-// check h2spec failed for h2lite alone:
+// check h2spec failed for h2lean alone:
 //
 //   * a connection control frame names no stream: SETTINGS (6.5) and PING (6.7) on stream 1 or 3
 //     are GOAWAY(PROTOCOL_ERROR), and so is RST_STREAM with stream id 0 -- a reset always names a
@@ -61,7 +61,7 @@
 //     highest one opened is GOAWAY(PROTOCOL_ERROR).
 //   * PRIORITY: naming itself as the dependency is dropped by both (RFC 9113 5.3 deprecated the
 //     7540 self-dependency rule with the rest of the signal), but a PRIORITY on stream 0 is where
-//     h2lite follows the RFC over node -- 6.3 mandates GOAWAY(PROTOCOL_ERROR) and node drops it
+//     h2lean follows the RFC over node -- 6.3 mandates GOAWAY(PROTOCOL_ERROR) and node drops it
 //     silently, the deviation h2spec's 6.3 check flags.
 //   * a trailer block has to end the message: a second HEADERS without END_STREAM is
 //     RST_STREAM(PROTOCOL_ERROR) and the connection lives, and the refusal happens only once the
@@ -81,7 +81,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, closeServer } = require('./diff-harness');
 
@@ -286,7 +286,7 @@ function drive(port, send, deadline = 350) {
 
 // One server, one raw client, the transcript. `respond: false` keeps the handler from answering
 // at all, which is how a case that ends the connection is kept free of an answer race: with a
-// responding handler, h2lite gets its HEADERS out before the fatal frame is read and node does
+// responding handler, h2lean gets its HEADERS out before the fatal frame is read and node does
 // not, and the difference is socket scheduling, not protocol. `respond: 'read'` is the third
 // shape, and the one the message-framing rules need: nghttp2 measures a body against the octets it
 // has CONSUMED, so a handler that answers without reading the request never notices a promise the
@@ -299,7 +299,7 @@ async function once(impl, settings, respond, send, deadline = 350) {
   // before this side read it. Node refuses a 1.5 MB literal as soon as it has read the
   // length prefix -- measured, the server had read between 228 690 and 1 500 030 octets of
   // the frame when it refused, so up to 1 172 776 of them were unread at the close and the
-  // close was an RST; the GOAWAY was lost in 1 of 20 rounds (tools/probe-big-lit.js). h2lite
+  // close was an RST; the GOAWAY was lost in 1 of 20 rounds (tools/probe-big-lit.js). h2lean
   // reads the whole frame before it decodes it, so it never closes with unread data and its
   // verdict always arrives.
   // The round is run again when the socket was reset, and the assertion stays strict: the
@@ -334,16 +334,16 @@ async function once(impl, settings, respond, send, deadline = 350) {
 // scratch because the numbers are the point): the old bundle answers INTERNAL_ERROR where the
 // new one maps the protocol failure to PROTOCOL_ERROR, still enforces RFC 7540 5.3.1's
 // self-dependency rule for PRIORITY (the new one follows RFC 9218 and drops the frame), and
-// reads a too-long content-length as a stream error rather than a connection error. h2lite
+// reads a too-long content-length as a stream error rather than a connection error. h2lean
 // pins the v24+ verdict everywhere; `nodeWant`, when given, is the measured v20/22 verdict
 // the node arm may answer instead.
 async function both(label, settings, respond, send, want, deadline = 350, nodeWant = want) {
   const node = await once(nodeHttp2, settings, respond, send, deadline);
-  const ours = await once(h2lite, settings, respond, send, deadline);
+  const ours = await once(h2lean, settings, respond, send, deadline);
   assert.ok(node.verdict === want || node.verdict === nodeWant,
     `node: ${label} -> ${node.verdict}`);
   assert.strictEqual(ours.verdict, want,
-    `h2lite: ${label} -> ${ours.verdict}, node -> ${node.verdict}`);
+    `h2lean: ${label} -> ${ours.verdict}, node -> ${node.verdict}`);
 }
 
 // The third kind of expectation: a frame the peer is allowed to still have on the wire, for which
@@ -352,8 +352,8 @@ async function both(label, settings, respond, send, want, deadline = 350, nodeWa
 // count is deliberately not compared here.
 async function noVerdictTest(label, respond, send, settings, deadline) {
   const node = await once(nodeHttp2, settings, respond, send, deadline);
-  const ours = await once(h2lite, settings, respond, send, deadline);
-  for (const [who, got] of [['node', node], ['h2lite', ours]]) {
+  const ours = await once(h2lean, settings, respond, send, deadline);
+  for (const [who, got] of [['node', node], ['h2lean', ours]]) {
     assert.doesNotMatch(got.verdict, /GOAWAY|RST\(/,
       `${who}: ${label} -> ${got.verdict} (RFC 9113 5.1 says discard the frame)`);
   }
@@ -427,7 +427,7 @@ test('a padded DATA frame whose padding does not fit ends the connection', async
 test('a padded DATA frame with an empty payload ends the connection', async () => {
   // A padded frame with no payload has no pad length to read, so it is malformed
   // before any of the padding rules apply to it. Node answers the same code
-  // (measured, tools/probe-pad-bad.js); h2lite used to accept the frame silently.
+  // (measured, tools/probe-pad-bad.js); h2lean used to accept the frame silently.
   await both('PADDED with an empty payload', undefined, false, (sock) => {
     sock.write(req(REQ));
     sock.write(frame(f.DATA, f.F_PADDED | EOS, 1, Buffer.alloc(0)));
@@ -463,7 +463,7 @@ test('a padded HEADERS frame with an empty payload ends the connection', async (
   // A padded frame with no payload has no pad length to read -- the octet it would
   // be read from is not this frame's -- so it is malformed before any of the padding
   // rules apply to it. Node answers the same code (measured, tools/probe-hdr-pad.js:
-  // "HEADERS: insufficient padding space"); h2lite used to read the octet after the
+  // "HEADERS: insufficient padding space"); h2lean used to read the octet after the
   // frame's payload and answered GOAWAY(INTERNAL_ERROR) with a Buffer RangeError as
   // its debug data.
   await both('a padded HEADERS with an empty payload', undefined, false, (sock) => {
@@ -475,11 +475,11 @@ test('a padded HEADERS frame whose padding fits is served', async () => {
   // The shape RFC 9113 6.2 describes and h2spec's generic/3.2 sends: the pad length
   // first, the block in the middle, the padding at the end. The padding is not part
   // of the block -- "the remainder of the frame payload is the header block
-  // fragment" -- and feeding it to the HPACK decoder is what made h2lite answer
+  // fragment" -- and feeding it to the HPACK decoder is what made h2lean answer
   // GOAWAY(COMPRESSION_ERROR) to a valid frame while node served the request
   // (measured, tools/probe-hdr-pad.js: "the RFC shape: pad length, block, padding";
   // the same frame is what h2spec's generic/3.2 sends, and that check was the one
-  // h2lite failed).
+  // h2lean failed).
   await both('a padded HEADERS with the block in the middle', undefined, 'read', (sock) => {
     sock.write(frame(f.HEADERS, f.F_PADDED | EOH | EOS, 1,
       Buffer.concat([Buffer.from([8]), REQ, Buffer.alloc(8)])));
@@ -523,7 +523,7 @@ test('a header list is measured as HPACK entries, not as the block or the bare f
 test('an oversized header list refuses the stream and keeps the connection', async () => {
   // RFC 9113 6.5.2 and 7 make this the application's problem to solve, not the connection's: the
   // refusal is RST_STREAM, and the next request on the same session must be served. Before
-  // this was measured, h2lite's assembly-time check on the compressed block length answered it
+  // this was measured, h2lean's assembly-time check on the compressed block length answered it
   // with GOAWAY(PROTOCOL_ERROR) -- one bad request taking every other client with it.
   await both('oversized stream 1 then a legal stream 3', { maxHeaderListSize: 250 }, true,
     (sock) => {
@@ -660,7 +660,7 @@ test('WINDOW_UPDATE and RST_STREAM for a stream in the idle state end the connec
     // 5.1 defines 'idle' as an id above the highest one this side has been told about, and the two
     // frames may not be sent there: 6.9 allows WINDOW_UPDATE only in 'open' and 'half-closed
     // (local)', 6.4 gives RST_STREAM as the way to abort a stream that exists. Measured on node
-    // (h2spec http2/5.1 and 6.9), each is GOAWAY(PROTOCOL_ERROR). h2lite had been written to the
+    // (h2spec http2/5.1 and 6.9), each is GOAWAY(PROTOCOL_ERROR). h2lean had been written to the
     // "unknown id" rule of 5.1 -- ignore the frame -- and answered nothing at all, which is the
     // right verdict only for an id that was once live.
     await both('WINDOW_UPDATE for stream 3, nothing opened past 1', undefined, false, (sock) => {
@@ -677,7 +677,7 @@ test('WINDOW_UPDATE and RST_STREAM for a stream in the idle state end the connec
     // answer to stream 1 itself still goes out is NOT part of that rule and is not asserted here:
     // measured over six runs of each shape written as ONE coalesced write (out/probe-discard.js,
     // kept as a scratch because the number is the point), node answers the WINDOW_UPDATE shape 6/6
-    // and discards the answer to the RST_STREAM shape 6/6 while h2lite answers both 6/6 -- the same
+    // and discards the answer to the RST_STREAM shape 6/6 while h2lean answers both 6/6 -- the same
     // queued-answer race as the KNOWN DIVERGENCE at the end of this file -- and under full-suite
     // load node's side of it flips. What neither stack may do is treat the frame as an error.
     await noVerdictTest('WINDOW_UPDATE for a served stream 1', true, (sock) => {
@@ -690,16 +690,16 @@ test('WINDOW_UPDATE and RST_STREAM for a stream in the idle state end the connec
     });
     // And one step above the line is the error again. The GOAWAY is the verdict and is pinned for
     // both stacks; whether the answer to stream 1 is still in front of it is the same race as above,
-    // so it is pinned for h2lite only -- the verdict frame is what the rule decides.
+    // so it is pinned for h2lean only -- the verdict frame is what the rule decides.
     const idleAfterServed = async (label, respond, send) => {
       const node = await once(nodeHttp2, undefined, respond, send);
-      const ours = await once(h2lite, undefined, respond, send);
+      const ours = await once(h2lean, undefined, respond, send);
       // the v20/22 bundle answers INTERNAL_ERROR for the same shape (measured)
       const nodeCode = node.verdict.replace(/^ANSWERED /, '');
       assert.ok(nodeCode === 'GOAWAY(PROTOCOL_ERROR)' || nodeCode === 'GOAWAY(INTERNAL_ERROR)',
         `node: ${label} -> ${node.verdict}`);
       assert.strictEqual(ours.verdict, 'ANSWERED GOAWAY(PROTOCOL_ERROR)',
-        `h2lite: ${label} -> ${ours.verdict}, node ${node.verdict}`);
+        `h2lean: ${label} -> ${ours.verdict}, node ${node.verdict}`);
     };
     await idleAfterServed('WINDOW_UPDATE for idle stream 3 after stream 1 was served', true,
       (sock) => {
@@ -738,12 +738,12 @@ test('a PRIORITY frame is five octets, names a stream, and its payload is never 
   });
   assert.ok(nodePri0.verdict === 'nothing' || nodePri0.verdict === 'GOAWAY(INTERNAL_ERROR)',
     `node: PRIORITY on stream 0 -> ${nodePri0.verdict} (the known node deviation)`);
-  // h2lite follows RFC 9113 6.3 and ends the connection instead.
-  const h2Pri0 = await once(h2lite, undefined, false, (sock) => {
+  // h2lean follows RFC 9113 6.3 and ends the connection instead.
+  const h2Pri0 = await once(h2lean, undefined, false, (sock) => {
     sock.write(pri(0, 1, 16));
   });
   assert.strictEqual(h2Pri0.verdict, 'GOAWAY(PROTOCOL_ERROR)',
-    `h2lite: PRIORITY on stream 0 -> ${h2Pri0.verdict}, RFC 9113 6.3`);
+    `h2lean: PRIORITY on stream 0 -> ${h2Pri0.verdict}, RFC 9113 6.3`);
 });
 
 test('a HEADERS priority block is five octets, and a stream may not depend on itself',
@@ -776,7 +776,7 @@ test('DATA and HEADERS after the peer\'s END_STREAM end the connection with STRE
     // or a closed connection -- but node -- the oracle -- makes no present/closed distinction and
     // ends the connection on BOTH stacks (measured: its nghttp2 says "DATA: stream in
     // half-closed(remote)"), and the stream-error reading regressed h2spec's DATA check (the tool
-    // echoed the DATA back instead of a verdict). So h2lite keeps node's GOAWAY here: 5.1 grants the
+    // echoed the DATA back instead of a verdict). So h2lean keeps node's GOAWAY here: 5.1 grants the
     // closed-shape read as a discretionary "MAY ... connection error", which is exactly what we do.
     // h2spec's http2/6.1 writes exactly the first shape: HEADERS flags=0x05 on stream 1, then DATA
     // flags=0x01 on the same id.
@@ -806,18 +806,18 @@ test('DATA and HEADERS after the peer\'s END_STREAM end the connection with STRE
     // reaches the socket, so a frame inside the ONE coalesced write below still sees it (measured
     // 8/8 GOAWAY; the same two frames one per write flip node to silence because the answer has by
     // then destroyed the record -- which is why the write is coalesced, the only fixed-answer form).
-    // Whether h2lite's own response escapes in front of the GOAWAY is write timing (the queued-answer
+    // Whether h2lean's own response escapes in front of the GOAWAY is write timing (the queued-answer
     // divergence at the end of this file), so the verdict is pinned per stack rather than compared.
     const closedError = async (label, frames) => {
       const send = (sock) => sock.write(Buffer.concat(frames));
       const node = await once(nodeHttp2, undefined, true, send);
-      const ours = await once(h2lite, undefined, true, send);
+      const ours = await once(h2lean, undefined, true, send);
       // the v20/22 bundle answers INTERNAL_ERROR for the same shape (measured)
       const nodeCode = node.verdict.replace(/^ANSWERED /, '');
       assert.ok(nodeCode === 'GOAWAY(STREAM_CLOSED)' || nodeCode === 'GOAWAY(INTERNAL_ERROR)',
         `node: ${label} -> ${node.verdict}`);
       assert.strictEqual(ours.verdict, 'ANSWERED GOAWAY(STREAM_CLOSED)',
-        `h2lite: ${label} -> ${ours.verdict}, node ${node.verdict}`);
+        `h2lean: ${label} -> ${ours.verdict}, node ${node.verdict}`);
     };
     await closedError('HEADERS|END_STREAM answered, then DATA', [
       frame(f.HEADERS, EOH | EOS, 1, REQ),
@@ -837,7 +837,7 @@ test('a frame naming an id a reset ended, one this side refused, one the peer sk
     // which of the two happened (see _dropStream's `killed`).
     //
     // The shapes below are written as ONE coalesced write and asserted as "no verdict": whether the
-    // answer to a stream the peer reset still goes out is nghttp2's write timing, and h2lite flushes
+    // answer to a stream the peer reset still goes out is nghttp2's write timing, and h2lean flushes
     // what its handler queued before the reset arrived (the KNOWN DIVERGENCE at the end of this
     // file). What neither stack may do is turn the peer's own late frame into a GOAWAY.
     await noVerdictTest('HEADERS|END_STREAM, the peer resets it, then DATA for that id', true,
@@ -876,7 +876,7 @@ test('a frame naming an id a reset ended, one this side refused, one the peer sk
     // A peer may skip ids upward, but an id at or below the highest one opened that this side never
     // saw -- not refused, not reset, simply not used -- cannot open a new stream: 5.1.1 names it an
     // unexpected identifier and mandates GOAWAY(PROTOCOL_ERROR). node stays silent (probe U18, U20,
-    // U21), so h2lite follows the RFC here -- the third divergence after PRIORITY on stream 0.
+    // U21), so h2lean follows the RFC here -- the third divergence after PRIORITY on stream 0.
     const lowLive = (sock) => {
       sock.write(frame(f.HEADERS, EOH | EOS, 3, REQ));
       sock.write(frame(f.HEADERS, EOH | EOS, 1, REQ));
@@ -885,9 +885,9 @@ test('a frame naming an id a reset ended, one this side refused, one the peer sk
     assert.strictEqual(nodeLowLive.verdict, 'ANSWERED',
       `node: HEADERS for an id never opened, below a finished one -> ${nodeLowLive.verdict} ` +
       '(the known node deviation)');
-    const h2LowLive = await once(h2lite, undefined, true, lowLive);
+    const h2LowLive = await once(h2lean, undefined, true, lowLive);
     assert.strictEqual(h2LowLive.verdict, 'ANSWERED GOAWAY(PROTOCOL_ERROR)',
-      `h2lite: HEADERS for an id never opened, below a finished one -> ${h2LowLive.verdict}, ` +
+      `h2lean: HEADERS for an id never opened, below a finished one -> ${h2LowLive.verdict}, ` +
       'RFC 9113 5.1.1');
     await noVerdictTest('DATA for an id never opened, below a finished one', true, (sock) => {
       sock.write(frame(f.HEADERS, EOH | EOS, 3, REQ));
@@ -895,7 +895,7 @@ test('a frame naming an id a reset ended, one this side refused, one the peer sk
     });
     // The same 5.1.1 violation with the higher id still live rather than already answered: the
     // guard reads the highest id this side has OPENED, not the highest one still serving, so the
-    // never-used lower id is refused identically. node still says nothing; h2lite ends the
+    // never-used lower id is refused identically. node still says nothing; h2lean ends the
     // connection (RFC 9113 5.1.1).
     const lowIdle = (sock) => {
       sock.write(frame(f.HEADERS, EOH, 3, REQ));
@@ -905,9 +905,9 @@ test('a frame naming an id a reset ended, one this side refused, one the peer sk
     assert.doesNotMatch(nodeLowIdle.verdict, /GOAWAY|RST\(/,
       `node: HEADERS for an id never opened, below a live stream -> ${nodeLowIdle.verdict} ` +
       '(the known node deviation)');
-    const h2LowIdle = await once(h2lite, undefined, true, lowIdle);
+    const h2LowIdle = await once(h2lean, undefined, true, lowIdle);
     assert.match(h2LowIdle.verdict, /GOAWAY\(PROTOCOL_ERROR\)/,
-      `h2lite: HEADERS for an id never opened, below a live stream -> ${h2LowIdle.verdict}, ` +
+      `h2lean: HEADERS for an id never opened, below a live stream -> ${h2LowIdle.verdict}, ` +
       'RFC 9113 5.1.1');
     // The reach of the "ended in this batch" memory, and the reason it is cleared: a stream that has
     // finished AND been answered is only remembered until the read that produced the answer is over,
@@ -924,7 +924,7 @@ test('DATA for a stream in the idle state ends the connection with PROTOCOL_ERRO
   // DATA is allowed in 'open' and 'half-closed (local)' only (5.1), and an id above the highest one
   // this side has been told about -- or one that no client may ever own -- is 'idle'. Measured on
   // node (probe U5, U13, U14): the connection ends, including for stream 0 and for an even id, and
-  // h2lite had been answering those two with the wrong code, if with a GOAWAY at all.
+  // h2lean had been answering those two with the wrong code, if with a GOAWAY at all.
   await both('DATA for an id that was never opened at all', undefined, false, (sock) => {
     sock.write(frame(f.DATA, EOS, 5, Buffer.from('test', 'ascii')));
     sock.write(req(REQ));
@@ -945,7 +945,7 @@ test('a trailer block has to arrive with END_STREAM', async () => {
   // 8.1: the second HEADERS of a request is the trailer section, and a trailer ends the message --
   // without END_STREAM the body would still be open with its tail already sent. Measured on node
   // with a handler that reads the body (probe case T3, and h2spec http2/8.1): the stream gets
-  // RST_STREAM(PROTOCOL_ERROR) and the connection is untouched. h2lite had accepted the block,
+  // RST_STREAM(PROTOCOL_ERROR) and the connection is untouched. h2lean had accepted the block,
   // emitted it as trailers, and answered the request as if nothing had happened.
   await both('HEADERS, DATA, then a trailer block without END_STREAM', undefined, 'read', (sock) => {
     sock.write(frame(f.HEADERS, EOH, 1, REQ));
@@ -1111,7 +1111,7 @@ test('the connection window is credited in half-window steps, not one frame per 
       sock.write(Buffer.concat([f.PREFACE, frame(f.SETTINGS, 0, 0, Buffer.alloc(0))]));
     });
   });
-  for (const [who, impl] of [['node', nodeHttp2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', nodeHttp2], ['h2lean', h2lean]]) {
     const { grants, advertised, done } = await flood(impl);
     assert.ok(done, `${who}: the 640 KiB upload never reached the handler (grants ${grants})`);
     assert.ok(grants.length > 0, `${who}: the connection window was never credited back`);
@@ -1174,10 +1174,10 @@ test('a GOAWAY with an unassigned error code is answered with ours and closes th
         sock.write(frame(f.PING, 0, 0, Buffer.from('6832737065630000', 'hex')));
       };
       const nodeGot = goawayOf(await once(nodeHttp2, undefined, false, send));
-      const oursGot = goawayOf(await once(h2lite, undefined, false, send));
+      const oursGot = goawayOf(await once(h2lean, undefined, false, send));
       assert.strictEqual(nodeGot, 'NO_ERROR', `code ${c}: node answers its own goodbye`
         + ' with NO_ERROR');
-      assert.strictEqual(oursGot, 'NO_ERROR', `code ${c}: h2lite answered ${oursGot}, node ` +
+      assert.strictEqual(oursGot, 'NO_ERROR', `code ${c}: h2lean answered ${oursGot}, node ` +
         `answered ${nodeGot}`);
     }
   });
@@ -1195,12 +1195,12 @@ test('a peer GOAWAY with NO_ERROR starts our own graceful close', async () => {
   const nodeGot = (await once(nodeHttp2, undefined, false, (sock) => {
     sock.write(frame(f.GOAWAY, 0, 0, body));
   })).verdict;
-  const oursGot = (await once(h2lite, undefined, false, (sock) => {
+  const oursGot = (await once(h2lean, undefined, false, (sock) => {
     sock.write(frame(f.GOAWAY, 0, 0, body));
   })).verdict;
   assert.strictEqual(nodeGot, 'GOAWAY(NO_ERROR)', `node: ${nodeGot}`);
   assert.strictEqual(oursGot, 'GOAWAY(NO_ERROR)',
-    `h2lite: ${oursGot}, node: ${nodeGot}`);
+    `h2lean: ${oursGot}, node: ${nodeGot}`);
 });
 
 // ---- what the two stacks still disagree on ---------------------------------------------------
@@ -1208,7 +1208,7 @@ test('a peer GOAWAY with NO_ERROR starts our own graceful close', async () => {
 test('KNOWN DIVERGENCE: the last-stream id of a GOAWAY sent for an unread frame', async () => {
   // Measured, and left alone rather than emulated: when a frame is rejected before its stream
   // was ever processed (an oversized HEADERS, a HPACK failure), node's GOAWAY names the stream
-  // id it read out of that frame's header, while h2lite names the highest stream it actually
+  // id it read out of that frame's header, while h2lean names the highest stream it actually
   // began to process -- 0 here. A client that sees the lower id retries the request, which is
   // the safe direction, so this is a difference in what a peer may assume, not in whether the
   // frame was refused. Recorded in AGENTS.md §10. The CODE is compared in the tests above; this
@@ -1218,11 +1218,11 @@ test('KNOWN DIVERGENCE: the last-stream id of a GOAWAY sent for an unread frame'
   };
   assert.strictEqual((await once(nodeHttp2, undefined, false, oversized)).last, 1,
     'node names the stream of the frame it refused');
-  assert.strictEqual((await once(h2lite, undefined, false, oversized)).last, 0,
-    'h2lite names only the streams it began to process');
+  assert.strictEqual((await once(h2lean, undefined, false, oversized)).last, 0,
+    'h2lean names only the streams it began to process');
   // The same shape for the HPACK 6.3 refusal measured by h2spec's hpack/4.2: the frame decodes
   // far enough to reach a stream, the size update after the field line is what kills the
-  // connection, and node still names the stream id off the refused frame's header while h2lite
+  // connection, and node still names the stream id off the refused frame's header while h2lean
   // has not begun processing it. Checked on the id alone -- the CODE is pinned by the test above,
   // and both stacks answer GOAWAY(COMPRESSION_ERROR) there.
   const lateResize = (sock) => {
@@ -1230,8 +1230,8 @@ test('KNOWN DIVERGENCE: the last-stream id of a GOAWAY sent for an unread frame'
   };
   assert.strictEqual((await once(nodeHttp2, undefined, false, lateResize)).last, 1,
     'node names the stream of the header block it failed to decode');
-  assert.strictEqual((await once(h2lite, undefined, false, lateResize)).last, 0,
-    'h2lite names only the streams it began to process');
+  assert.strictEqual((await once(h2lean, undefined, false, lateResize)).last, 0,
+    'h2lean names only the streams it began to process');
 });
 
 test('KNOWN DIVERGENCE: a header frame that is both over size and undecodable', async () => {
@@ -1239,7 +1239,7 @@ test('KNOWN DIVERGENCE: a header frame that is both over size and undecodable', 
   // two stacks check them in decides the octet that reaches the peer: node answers
   // GOAWAY(COMPRESSION_ERROR) because nghttp2 feeds a header block to the decoder as its
   // octets arrive, so the decoding failure is found before any length verdict could be given,
-  // while h2lite checks the length in _allowFrame() without reading the payload at all and
+  // while h2lean checks the length in _allowFrame() without reading the payload at all and
   // answers GOAWAY(FRAME_SIZE_ERROR). Which block is decodable is what separates this case
   // from 'HEADERS over the max frame size ends the connection, HPACK and all' above: there the
   // block IS valid HPACK and both stacks agree on FRAME_SIZE_ERROR.
@@ -1260,18 +1260,18 @@ test('KNOWN DIVERGENCE: a header frame that is both over size and undecodable', 
   const goaway = (r) => (r.verdict.match(/GOAWAY\((\w+)\)/) || [null, 'none'])[1];
   assert.strictEqual(goaway(await once(nodeHttp2, undefined, false, undecodable)),
     'COMPRESSION_ERROR', 'node reports the decoding failure');
-  assert.strictEqual(goaway(await once(h2lite, undefined, false, undecodable)),
-    'FRAME_SIZE_ERROR', 'h2lite reports the frame size');
+  assert.strictEqual(goaway(await once(h2lean, undefined, false, undecodable)),
+    'FRAME_SIZE_ERROR', 'h2lean reports the frame size');
 });
 
 test('KNOWN DIVERGENCE: an answer queued in the same batch as a refusal goes out here', async () => {
   // Measured, and left alone rather than emulated. A handler that answers as soon as the stream
   // opens puts a response on the wire, and if the frames in that same read batch break a
   // message-framing rule, nghttp2 often throws the queued response away: it refuses the stream (or
-  // the connection) and the peer never sees a HEADERS for it. h2lite always flushes what the
+  // the connection) and the peer never sees a HEADERS for it. h2lean always flushes what the
   // handler wrote before the refusal is processed, so its transcript always starts with ANSWERED.
   // Measured with tools/probe-inbound-limits.js, cases M1, M1b, N1, N2, P6 and P8 -- three runs of
-  // each: h2lite ANSWERED plus the refusal every time, node the same refusal and NOTHING answered
+  // each: h2lean ANSWERED plus the refusal every time, node the same refusal and NOTHING answered
   // in most runs. Not in all of them: the full-suite run caught node answering this very shape once
   // too, which is what the relaxed assertion below records -- WHETHER node's response escapes is
   // nghttp2's own write-batch timing, and only the discard behaviour is a rule. Asserting the exact
@@ -1290,11 +1290,11 @@ test('KNOWN DIVERGENCE: an answer queued in the same batch as a refusal goes out
     sock.write(frame(f.HEADERS, EOH, 1, Buffer.from('4085f2b24a84ff026f6b', 'hex')));
   };
   const nodeGot = (await once(nodeHttp2, undefined, true, trailer, 700)).verdict;
-  const oursGot = (await once(h2lite, undefined, true, trailer, 700)).verdict;
+  const oursGot = (await once(h2lean, undefined, true, trailer, 700)).verdict;
   // node's arm is printed and not pinned: whether its response escapes, and with which reset code
   // the refusal then reaches the peer, is nghttp2's write-batch timing.
   assert.match(oursGot, /RST\(PROTOCOL_ERROR\)/,
-    `h2lite must still refuse the trailer shape, however node answered it (${nodeGot}): ${oursGot}`);
+    `h2lean must still refuse the trailer shape, however node answered it (${nodeGot}): ${oursGot}`);
   assert.ok(oursGot.startsWith('ANSWERED'),
     `the queued answer is flushed here -- that is the divergence: ${oursGot}, node ${nodeGot}`);
 });
@@ -1365,7 +1365,7 @@ test('the refused-stream history stays bounded', async () => {
   // CVE-2023-44487 shape) would otherwise grow an array for the life of the connection.
   // 40 refusals on a session allowed one live stream: maxConcurrentStreams is 1, stream 1 is
   // never answered and stays live, and the 39 that follow are refused.
-  const session = await manyRequests(h2lite, { maxConcurrentStreams: 1 }, 40, 3, false);
+  const session = await manyRequests(h2lean, { maxConcurrentStreams: 1 }, 40, 3, false);
   assert.strictEqual(session._refused.length, 32,
     `the refused history is ${session._refused.length} entries, its bound is 32`);
 });
@@ -1376,7 +1376,7 @@ test('the dropped-stream history stays bounded', async () => {
   // -- has to be remembered, or the DATA still in flight for it would read as a stream in the idle
   // state and end the connection. 300 answered requests each reset by the client leave 256 ids
   // behind, not 300.
-  const session = await manyRequests(h2lite, undefined, 300, 1, true, true);
+  const session = await manyRequests(h2lean, undefined, 300, 1, true, true);
   assert.strictEqual(session._dropped.length, 256,
     `the dropped history is ${session._dropped.length} entries, its bound is 256`);
 });
@@ -1388,7 +1388,7 @@ test('the ended-stream history stays bounded', async () => {
   // into one write would grow it without a bound if the cap were missing -- and the entries above
   // the cap are the oldest ones, whose answers have long gone out and whose frames are the
   // discard by the time anything could arrive for them.
-  const session = await manyRequests(h2lite, undefined, 300, 1, true);
+  const session = await manyRequests(h2lean, undefined, 300, 1, true);
   assert.strictEqual(session._ended.length, 256,
     `the ended history is ${session._ended.length} entries, its bound is 256`);
   assert.strictEqual(session._dropped, null,

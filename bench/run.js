@@ -1,5 +1,5 @@
 // Runner: saturate the server with N client processes, report server CPU/req.
-//   node bench/run.js --server=h2lite --clients=4 --conc=32 --duration=12000 --body=0
+//   node bench/run.js --server=h2lean --clients=4 --conc=32 --duration=12000 --body=0
 const { spawn } = require('node:child_process');
 
 const argv = process.argv.slice(2);
@@ -17,7 +17,7 @@ const port = Number(opt.port || 8460);
 
 const SRV_FILES = {
   native: 'bench/prof-h2.js', // node:http2
-  h2lite: 'bench/h2lite-h2.js', // this project, API-compatible server
+  h2lean: 'bench/h2lean-h2.js', // this project, API-compatible server
   lite: 'bench/lite-h2.js' // the throwaway PoC: ceiling, no API
 };
 const srvFile = SRV_FILES[kind] || SRV_FILES.native;

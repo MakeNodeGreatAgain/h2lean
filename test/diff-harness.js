@@ -1,5 +1,5 @@
 // Shared harness for the differential tests: the same application code and the
-// same client script are run against node:http2 and against h2lite, so anything
+// same client script are run against node:http2 and against h2lean, so anything
 // that shows up in the comparison is an implementation difference and not an
 // artefact of the test.
 const http2 = require('node:http2');

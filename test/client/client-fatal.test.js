@@ -3,20 +3,20 @@
 // and on the session; the teardown order is stream 'error', stream 'close',
 // session 'error', session 'close' (measured, tools/probe-client-pad-bad.js and
 // tools/probe-client-hdr-pad.js, node v26.12.1). These tests pin that parity for
-// h2lite: the staged GOAWAY has to leave before the socket dies, and the two
+// h2lean: the staged GOAWAY has to leave before the socket dies, and the two
 // padded-HEADERS shapes RFC 9113 6.2 refuses (padding that does not fit, and a
 // PADDED payload with no pad-length octet) have to end the session as node's do.
 //
 // The one shape that stays a divergence is documented in lib/client-session.js:
 // a padded HEADERS whose padding exactly consumes the payload leaves an empty
 // block, which is a legal frame -- node answers a stream error for the missing
-// :status, h2lite reports a response with no headers.
+// :status, h2lean reports a response with no headers.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const f = require('../../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -159,11 +159,11 @@ function responseOnEvenSid() {
 // probe-client-fatal-node20.js, v20.19.5 / v22.21.1 / v26.12.1): for the padded shapes the
 // old bundled nghttp2 terminates the session at the C layer without surfacing anything on
 // the JS client -- no error events, no closes, the wire GOAWAY is the only observable --
-// and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. h2lite
+// and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. h2lean
 // pins the v24+ surface in both cases; in legacy mode the node arm only has to have sent
 // a fatal GOAWAY.
 async function assertFatalParity(answerFrames, legacy) {
-  for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const { events, got } = await run(impl, answerFrames);
     const joined = events.join(' | ');
     const goaway = got.find((g) => g.type === f.GOAWAY);
@@ -219,7 +219,7 @@ test('response HEADERS again on a closed stream id: both stacks ignore it', asyn
   // for a sid at or below last_sent_stream_id): the block is dropped without a
   // verdict, the session stays up. Both stacks must be silent about it.
   const answer = frame(f.HEADERS, f.F_END_STREAM | f.F_END_HEADERS, 1, Buffer.from([0x88]));
-  for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const { events, got } = await run(impl, [answer, answer]);
     const joined = events.join(' | ');
     assert.ok(!got.some((g) => g.type === f.GOAWAY),

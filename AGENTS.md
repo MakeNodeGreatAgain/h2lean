@@ -1,4 +1,4 @@
-# AGENTS.md — instructions for coding agents working on h2lite
+# AGENTS.md — instructions for coding agents working on h2lean
 
 Read this file before changing anything. Sections 2 and 3 are not style advice: they are
 the rules that decide whether a change here is accepted or thrown away. Sections 6-9 state
@@ -6,8 +6,8 @@ where the working detail lives; this file is the general map, not the archive.
 
 ## 1. What this project is
 
-h2lite is a **pure-JS HTTP/2 library** whose public surface is `node:http2`. The goal is a
-drop-in replacement for application code: `require('node:http2')` becomes `require('h2lite')`,
+h2lean is a **pure-JS HTTP/2 library** whose public surface is `node:http2`. The goal is a
+drop-in replacement for application code: `require('node:http2')` becomes `require('h2lean')`,
 and the same handler code keeps working on a stack with no nghttp2 C inside it.
 
 * Compatibility target is **surface level** — names, argument shapes, event orders,
@@ -19,7 +19,7 @@ and the same handler code keeps working on a stack with no nghttp2 C inside it.
   supports both transports too — h2c over `net` and h2s over `tls.connect` with the same
   ALPN rules as node (pinned by `test/client/client-tls.test.js`). Server push and
   `performServerHandshake` are not implemented and not on the table silently. They either
-  are absent or throw `ERR_H2LITE_NOT_IMPLEMENTED` — never a silent wrong answer.
+  are absent or throw `ERR_H2LEAN_NOT_IMPLEMENTED` — never a silent wrong answer.
 * **Zero runtime dependencies.** `package.json` has no `dependencies`; the library (`lib/`,
   `index.js`) must stay importable with nothing installed. Tests run on the built-in
   `node:test`. `devDependencies` are allowed, but only for out-of-band dev tooling the
@@ -173,8 +173,8 @@ the answer to "why is it like this" and the measurement that would be needed to 
 
 `npm test` runs the server suite and `test/client/`; the timeout in the script is
 load-bearing, and the suite is differential by design — `test/diff-harness.js` runs the
-same application script against `node:http2` and against h2lite and compares the
-transcripts. Pin node's *measured* value, not h2lite's behaviour. The full rules — the
+same application script against `node:http2` and against h2lean and compares the
+transcripts. Pin node's *measured* value, not h2lean's behaviour. The full rules — the
 timeout, the test-count expectation, the known fragility classes (deadline vs terminal
 frame, the `date` header, the nghttp2 destructor abort, the GOAWAY-echo race), and the
 external gates (`npm run spec`, `test/interop-external.test.js`) — are in
@@ -184,7 +184,7 @@ moves a guarded line (CONTRIBUTING.md §3).
 ## 7. Performance work
 
 Every optimisation is measured or it is not an optimisation. The unit of proof is the
-paired matrix — `GC=1 sh bench/matrix.sh <label>`, every h2lite case against the *same*
+paired matrix — `GC=1 sh bench/matrix.sh <label>`, every h2lean case against the *same*
 case on `node:http2`, both arms re-measured in one session, ABBA interleaving with ≥3
 rounds, `cpuPerReq` as the metric, drift judged per case, both arms verified to do the
 same work (READBODY on uploads). Micro-effects are measured at the granularity where
@@ -200,7 +200,7 @@ in `CHANGELOG.md` (paired ratios only; re-measure both arms before writing new o
 
 ## 8. Security
 
-h2lite terminates **untrusted bytes from the internet** and turns them into objects an
+h2lean terminates **untrusted bytes from the internet** and turns them into objects an
 application trusts. There are exactly two classes of bug that matter here, and every limit
 below is a defence against one of them. `SECURITY.md` is the outward-facing version of this
 section — reporting, deployment advice, the gaps that are known and stated; this section is
@@ -263,7 +263,7 @@ Any change that puts more of the peer's names into a fast map has to re-check th
 8.2 and RFC 7541 6.3) are the same defence in a different shape: each refuses a peer's frame
 before it can move a window, open a stream or finish a message that the application is about
 to trust. Each was measured with `tools/probe-inbound-limits.js` after h2spec 2.6.0 failed it
-for h2lite alone, and each has both a parity assertion and an anchor in
+for h2lean alone, and each has both a parity assertion and an anchor in
 `tools/mutate-guards.js`. The rules:
 
 * A connection control frame names no stream: `SETTINGS`/`PING` on a non-zero id,
@@ -289,7 +289,7 @@ for h2lite alone, and each has both a parity assertion and an anchor in
   stream's problem, too many is the connection's (`GOAWAY(INTERNAL_ERROR)`), and a
   promise on a HEADERS that already ends the message is refused at the accept decision.
 * Those message-framing checks are **reader-dependent** (nghttp2 measures against consumed
-  octets): pin them with `respond: 'read'` — `respond: true` would assert h2lite's
+  octets): pin them with `respond: 'read'` — `respond: true` would assert h2lean's
   laxness and call it parity.
 * A HPACK dynamic-table size update belongs at the start of a header block (RFC 7541 6.3):
   one after a field line → `GOAWAY(COMPRESSION_ERROR)`, because a second decoder would
@@ -350,21 +350,21 @@ for h2lite alone, and each has both a parity assertion and an anchor in
 One line each; the measurements, the tried fixes and the standing instruction live in
 `CONTRIBUTING.md` §5. None of these is a to-do list.
 
-* **Graceful close: who is allowed to finish it.** The predicates differ (h2lite counts
+* **Graceful close: who is allowed to finish it.** The predicates differ (h2lean counts
   owed write callbacks; node drains nghttp2 first) and three fixes were tried and measured
   red. A decision, not an oversight — pinned by `test/goaway.test.js`.
 * **A server stream nobody read the request of.** node auto-closes it after the response
-  (`RST_STREAM(NO_ERROR)` on the wire); h2lite holds the stream until the peer ends its
+  (`RST_STREAM(NO_ERROR)` on the wire); h2lean holds the stream until the peer ends its
   half. Measured boundary with `tools/probe-stream-teardown.js`.
 * **An `end()` with no body on a stream that never responded.** node puts nothing on the
-  wire; h2lite answers `200` with an empty `DATA/ES`. KNOWN DIVERGENCE in
+  wire; h2lean answers `200` with an empty `DATA/ES`. KNOWN DIVERGENCE in
   `test/response-start.test.js`.
 * **GOAWAY last-stream id for a frame refused before its stream was processed.** node
-  names the stream, h2lite names only reached ids. KNOWN DIVERGENCE in
+  names the stream, h2lean names only reached ids. KNOWN DIVERGENCE in
   `test/inbound-limits.test.js`; no client can act on the difference.
 * **An answer queued in the same read batch as a refusal** goes out here and is discarded
   by node; the codes agree, only whether a HEADERS reaches the peer differs. KNOWN
-  DIVERGENCE in `test/inbound-limits.test.js`; it explains the two h2lite-only
+  DIVERGENCE in `test/inbound-limits.test.js`; it explains the two h2lean-only
   `npm run spec` arms (http2/8.1.2.6).
 * **The h2spec arms both stacks fail are not ours to fix — do not bend the code to the
   tool.** They check RFC 7540 wording RFC 9113 changed or dropped. Encoded in the

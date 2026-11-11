@@ -261,7 +261,7 @@ test('encoder: a table size change is restated, an unchanged one is not', () => 
   const dec = new Decoder(4096);
   const dst = Buffer.allocUnsafe(4096);
   for (let r = 0; r < 3; r++) {
-    for (const [n, v] of [['content-type', 'text/plain'], ['server', 'h2lite']]) {
+    for (const [n, v] of [['content-type', 'text/plain'], ['server', 'h2lean']]) {
       const off = enc.write(dst, 0, n, v, false);
       dec.decode(dst, 0, off, []);
     }

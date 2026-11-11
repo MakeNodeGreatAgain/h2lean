@@ -9,18 +9,18 @@
 // clients end the session on it, and neither delivers the answer as a complete
 // body.
 //
-// What node adds on top is a wire and an event difference that h2lite's client
+// What node adds on top is a wire and an event difference that h2lean's client
 // does not have yet, and that the difference list in lib/client-session.js
 // records: node puts GOAWAY(PROTOCOL_ERROR) on the wire and reports the failure
 // as ERR_HTTP2_ERROR on the stream and on the session (measured,
-// tools/probe-client-pad-bad.js), while h2lite's client ends the session
+// tools/probe-client-pad-bad.js), while h2lean's client ends the session
 // without the GOAWAY and without the error events.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
-const h2lite = require('../../index');
+const h2lean = require('../../index');
 const f = require('../../lib/frames');
 
 function frame(type, flags, sid, payload) {
@@ -118,7 +118,7 @@ async function run(impl, payload, flags) {
 // the session at the C layer without emitting any JS event -- no stream/session error, no
 // closes (measured, see the legacy note in client-fatal.test.js). The wire-level verdict
 // for the same shapes is pinned in client-fatal.test.js; here the node arm is asserted
-// only when its version surfaces the teardown, while h2lite is pinned to node 24+
+// only when its version surfaces the teardown, while h2lean is pinned to node 24+
 // behavior in full.
 const assertSessionEnd = (who, events) => {
   if (who === 'node' && events.length === 0) {
@@ -133,7 +133,7 @@ const assertSessionEnd = (who, events) => {
 };
 
 test('a padded DATA frame with an empty payload ends the session', async () => {
-  for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const events = await run(impl, Buffer.alloc(0), f.F_PADDED);
     assertSessionEnd(who, events);
   }
@@ -142,7 +142,7 @@ test('a padded DATA frame with an empty payload ends the session', async () => {
 test('a padded DATA frame whose padding does not fit ends the session', async () => {
   // Four octets of payload -- the pad length and three more -- and a padding
   // that claims two hundred of them.
-  for (const [who, impl] of [['node', http2], ['h2lite', h2lite]]) {
+  for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const payload = Buffer.concat([Buffer.from([200]), Buffer.alloc(3)]);
     const events = await run(impl, payload, f.F_PADDED);
     assertSessionEnd(who, events);

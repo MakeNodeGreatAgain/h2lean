@@ -2,7 +2,7 @@
 // probe-wire.js) and so is the decoded header set; what is left is the ORDER of
 // events an application observes on server / session / stream / req / res.
 //
-// Each scenario is run twice, once against node:http2 and once against h2lite,
+// Each scenario is run twice, once against node:http2 and once against h2lean,
 // with the same recorder, and the two traces must match after removing the
 // documented differences below. Every whitelisted entry needs a reason: it is a
 // deliberate incompatibility, not an unknown one.
@@ -10,13 +10,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const nodeHttp2 = require('node:http2');
-const h2lite = require('../index');
+const h2lean = require('../index');
 
 const SESSION_EVENTS = ['connect', 'close', 'error', 'frameError', 'goaway', 'aborted',
   'streamClosed', 'streamError', 'socketError', 'timeout', 'remoteSettings'];
 const STREAM_EVENTS = ['aborted', 'close', 'error', 'end', 'data', 'wantTrailers', 'trailers'];
 // The same list without 'data'. Recording 'data' attaches a listener, and attaching one is
-// what starts consumption -- on h2lite that releases the flow-control credit and replays the
+// what starts consumption -- on h2lean that releases the flow-control credit and replays the
 // buffered EOF, on node it switches the stream to flowing mode. The eof-* scenarios are about
 // the shape where nobody reads the request, so observing them must not make the test a reader.
 const STREAM_LIFECYCLE = ['aborted', 'close', 'error', 'end', 'wantTrailers', 'trailers'];
@@ -27,7 +27,7 @@ const STREAM_LIFECYCLE = ['aborted', 'close', 'error', 'end', 'wantTrailers', 't
 const SERVER_EVENTS = ['session', 'stream', 'close', 'sessionError',
   'connectionError', 'error'];
 // 'readable' is deliberately not recorded: attaching a 'readable' listener puts
-// the Readable into the mode where 'end' never fires, on node and on h2lite
+// the Readable into the mode where 'end' never fires, on node and on h2lean
 // alike, so observing it here would change the thing being observed.
 const REQ_EVENTS = ['aborted', 'close', 'end', 'data', 'error', 'trailers'];
 const RES_EVENTS = ['finish', 'close', 'error', 'drain'];
@@ -59,7 +59,7 @@ const TEARDOWN_CUT = 'server.stream';
 // same tick -- and there it is teardown noise, so it is dropped instead of compared: whether the
 // answer is read before the session is torn down is a race on node's side too. Measured on the
 // 'compat' shape (tools/probe-goaway-echo.js): node reported the echo in 40 of 40 rounds on an
-// idle machine and in 26 of 40 and 29 of 30 in two loaded runs, h2lite in every round of every
+// idle machine and in 26 of 40 and 29 of 30 in two loaded runs, h2lean in every round of every
 // run -- node's session is destroyed when its graceful close completes, ours when the GOAWAY is
 // written, and the answer lands in the window between. The 'goaway' scenario keeps the check,
 // because there the event IS the subject.
@@ -229,7 +229,7 @@ const SCENARIOS = ['simple', 'post', 'reset', 'clientReset', 'destroy', 'goaway'
 for (const scenario of SCENARIOS) {
   test(`event order matches node:http2 (${scenario})`, async () => {
     const native = await traceOf(nodeHttp2, scenario);
-    const ours = await traceOf(h2lite, scenario);
+    const ours = await traceOf(h2lean, scenario);
     compare(ours, native, scenario);
   });
 }

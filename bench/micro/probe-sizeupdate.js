@@ -9,7 +9,7 @@ const { Decoder, Encoder, STATIC } = require('../../lib/hpack');
 
 const LIST = [
   ':method', 'GET', ':path', '/index.html', ':scheme', 'http', ':authority', 'localhost',
-  'user-agent', 'h2lite/0.1', 'accept', '*/*', 'accept-encoding', 'gzip, deflate',
+  'user-agent', 'h2lean/0.1', 'accept', '*/*', 'accept-encoding', 'gzip, deflate',
   'x-request-id', '0123456789abcdef'
 ];
 

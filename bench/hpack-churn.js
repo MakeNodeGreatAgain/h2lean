@@ -28,7 +28,7 @@ function shapes(n) {
     out.push(Object.freeze({
       ':status': '200',
       'content-type': 'text/plain; charset=utf-8',
-      server: 'h2lite/0.1',
+      server: 'h2lean/0.1',
       etag: `W/"${i}-${'x'.repeat(24)}"`
     }));
   }

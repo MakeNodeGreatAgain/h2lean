@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="500" viewBox="0 0 1600 500" fill="none" role="img" aria-labelledby="title description">
-  <title id="title">h2lite — Speed, secured.</title>
-  <desc id="description">README banner for h2lite, a pure JavaScript HTTP/2 server and client for Node.js with a native node:http2-compatible API. An aerodynamic closed portal and speed trails express extreme performance and a secure data channel.</desc>
+  <title id="title">h2lean — Speed, secured.</title>
+  <desc id="description">README banner for h2lean, a pure JavaScript HTTP/2 server and client for Node.js with a native node:http2-compatible API. An aerodynamic closed portal and speed trails express extreme performance and a secure data channel.</desc>
   <defs>
     <linearGradient id="background" x1="80" y1="48" x2="1518" y2="466" gradientUnits="userSpaceOnUse">
       <stop stop-color="#101D31"/>
@@ -57,8 +57,8 @@
     </g>
     <text x="27" y="38" text-anchor="middle" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="25" font-style="italic" font-weight="900" letter-spacing="-2">h2</text>
   </g>
-  <text x="158" y="113" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="56" font-weight="800" letter-spacing="-2.5">h2<tspan fill="#22D3EE">lite</tspan></text>
-  <text x="326" y="108" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="16" letter-spacing="2.5">NODE.JS / HTTP2</text>
+  <text x="158" y="113" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="56" font-weight="800" letter-spacing="-2.5">h2<tspan fill="#22D3EE">lean</tspan></text>
+  <text x="346" y="108" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="16" letter-spacing="2.5">NODE.JS / HTTP2</text>
 
   <!-- Value proposition: short enough to survive README downscaling. -->
   <text x="88" y="240" fill="#F8FAFC" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="76" font-weight="850" letter-spacing="-3">SPEED, SECURED.</text>
@@ -86,5 +86,5 @@
     <path d="M273 207C283 177 308 158 343 158C383 158 403 181 394 213C387 239 367 256 340 275L315 292H376L369 323H263L270 294L326 252C345 238 355 225 359 213C363 200 356 192 342 192C326 192 315 201 309 216L273 207Z" fill="url(#accent)"/>
   </g>
 
-  <text x="1456" y="434" text-anchor="end" fill="#7E91A9" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" letter-spacing="2">FAST / SECURE / LITE</text>
+  <text x="1456" y="454" text-anchor="end" fill="#7E91A9" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" letter-spacing="2">FAST / SECURE / LITE</text>
 </svg>

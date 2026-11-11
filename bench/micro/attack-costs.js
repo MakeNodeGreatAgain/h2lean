@@ -180,7 +180,7 @@ bench('a bounded Map of the normalised names', () => LOWER.get('Content-Type'));
 // 5. Buffer.from(str) vs allocUnsafe + write
 // ---------------------------------------------------------------------------
 // The claim to check: Buffer.from(str) zero-fills and copies, and pairing
-// allocUnsafe() with .write() is faster. h2lite's own hot paths do not encode
+// allocUnsafe() with .write() is faster. h2lean's own hot paths do not encode
 // strings into buffers -- the HPACK encoder writes latin1 straight into the
 // destination -- but an application writing a string body does go through
 // Buffer.from.

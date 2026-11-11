@@ -1,9 +1,9 @@
 // Interop with clients that belong neither to this repository nor to node: nghttp and curl, each
-// built on its own nghttp2 library, driven against an h2lite server the way any real peer would be.
+// built on its own nghttp2 library, driven against an h2lean server the way any real peer would be.
 //
-// Why the differential suite does not cover this: every other file here compares h2lite with
+// Why the differential suite does not cover this: every other file here compares h2lean with
 // node:http2, so a behaviour the two share is invisible no matter how many other implementations
-// reject it. These tests ask the opposite question -- does an INDEPENDENT stack accept what h2lite
+// reject it. These tests ask the opposite question -- does an INDEPENDENT stack accept what h2lean
 // puts on the wire -- and the answer comes from a binary this repository does not control, so the
 // file skips when the binary is absent instead of failing a machine that never had it.
 //
@@ -16,12 +16,12 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
-const h2lite = require('../index');
+const h2lean = require('../index');
 const certificates = require('./fixtures-tls');
 const { listen, closeServer } = require('./diff-harness');
 
 const OUT = path.join(__dirname, '..', 'out');
-const BODY = 'h2lite interop\n';
+const BODY = 'h2lean interop\n';
 
 // A version line and a zero status is enough to know the binary is there and runnable; a machine
 // without it gets the skip rather than a failure that looks like a protocol bug.
@@ -40,8 +40,8 @@ const CURL = available('curl');
 function serve(tls) {
   const stats = { peak: 0, live: 0, streams: 0 };
   const srv = tls
-    ? h2lite.createSecureServer({ key: certificates().key, cert: certificates().cert })
-    : h2lite.createServer();
+    ? h2lean.createSecureServer({ key: certificates().key, cert: certificates().cert })
+    : h2lean.createServer();
   srv.on('stream', (stream) => {
     stream.on('close', () => {
       stats.live--;
