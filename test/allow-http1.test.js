@@ -236,6 +236,39 @@ test('http1Options.IncomingMessage (and the DEP0202 name) reaches the fallback',
   }
 });
 
+// Removing a listener must take it off the HTTP/1 side too: node serves both protocols
+// from one listener list, so a removed handler stops seeing requests of either kind.
+async function removeRun(impl) {
+  const { key, cert } = certificates();
+  const seen = [];
+  const srv = impl.createSecureServer({ key, cert, allowHTTP1: true });
+  const first = (req, res) => {
+    seen.push('first');
+    res.end('first');
+  };
+  srv.on('request', first);
+  srv.removeListener('request', first);
+  srv.on('request', (req, res) => {
+    seen.push('second');
+    res.end('second');
+  });
+  const port = await listen(srv);
+  const h1 = summarize((await h1Request(port, { ALPNProtocols: ['http/1.1'] })).raw).body;
+  const h2 = (await h2Get(port, '/over-h2')).body;
+  const out = { seen: [...seen], h1, h2 };
+  await closeServer(srv);
+  return out;
+}
+
+test('removeListener takes the handler off the HTTP/1 side too', async () => {
+  const node = await removeRun(http2);
+  const ours = await removeRun(h2lean);
+  assert.deepStrictEqual(ours, node);
+  assert.deepStrictEqual(node.seen, ['second', 'second'], 'the removed handler never fires');
+  assert.strictEqual(node.h1, 'second');
+  assert.strictEqual(node.h2, 'second');
+});
+
 // close() with the fallback live: an idle keep-alive connection is shut down instead
 // of holding the close, and a response already in flight is allowed to finish.
 async function closeIdleRun(impl) {

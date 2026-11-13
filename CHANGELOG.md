@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.2.1] — 2026-11-13
+
+### Fixed
+
+- With `allowHTTP1` live, a **`removeListener` now takes the handler off the HTTP/1 side
+  too**. Node serves both protocols from one listener list, so a handler the application
+  removes stops seeing requests of either kind; the 0.2.0 mirror was one-way and the
+  removed handler kept firing for HTTP/1.1 connections (double execution if a replacement
+  handler had been added). A `once` listener now fires at most once across both protocols,
+  the way node's single emitter does. `removeAllListeners` remains unmirrored — it fires
+  no per-listener hook — recorded in the `lib/server.js` header comment.
+
 ## [0.2.0] — 2026-11-13
 
 ### Added
