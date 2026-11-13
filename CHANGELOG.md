@@ -3,6 +3,34 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.2.0] — 2026-11-13
+
+### Added
+
+- **`createSecureServer({ allowHTTP1: true })`** — the HTTP/1.1 fallback: the ALPN list
+  becomes `['h2', 'http/1.1']`, a connection negotiating `http/1.1` (or offering no ALPN at
+  all) is served by an embedded `node:http.Server` configured from **`http1Options`**
+  (the option bag node passes to its HTTP/1 server, with the deprecated top-level
+  `Http1IncomingMessage` / `Http1ServerResponse` names migrating into it the way node's
+  DEP0201 does), and one `request` handler — or `upgrade`, `checkContinue`, `connect`,
+  `clientError` listener — receives both kinds of request. With the fallback off, a
+  no-ALPN connection now gets node's `unknownProtocol` event, or the 403 text node sends
+  when nobody listens, instead of a silent destroy; the socket is bounded by
+  `unknownProtocolTimeout` (default 10000). Probed off a live node v26.12.1 server and
+  `internal/http2/core.js` in one session; node serves the fallback from the same emitter
+  via a private mixin h2lean cannot reach, so the one-listener behaviour is carried by a
+  `newListener` mirror — a `removeListener` does not unmirror (see the `lib/server.js`
+  header comment).
+
+### Changed
+
+- A TLS connection that offers **no ALPN is no longer accepted as an HTTP/2 session**.
+  Node's `connectionListener` routes it to the HTTP/1 fallback / `unknownProtocol` path —
+  measured: a no-ALPN client speaking HTTP/1.1 receives node's `HTTP/1.0 403 Forbidden`
+  text, never a session — and h2lean's old rule (it attached a session, documented as
+  "h2 prior knowledge over TLS") was written down against that measurement in error. Pinned
+  by `test/allow-http1.test.js` on both stacks.
+
 ## [0.1.1] — 2026-11-11
 
 ### Fixed

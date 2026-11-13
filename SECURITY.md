@@ -115,9 +115,12 @@ nobody reads therefore applies backpressure to the sender instead of buffering h
 
 `createSecureServer()` delegates all certificate and protocol decisions to `node:tls` —
 there is no certificate validation logic in this repository, by design, so TLS issues are
-node's to fix. ALPN is pinned to `h2`; a connection negotiating anything else is destroyed
-without becoming a session, and no ALPN at all is accepted (prior knowledge over TLS),
-which is what node does.
+node's to fix. ALPN is pinned to `h2` (plus `http/1.1` when `allowHTTP1` is set); a
+connection negotiating anything else is destroyed without becoming a session. With no ALPN
+at all the verdict follows node's `connectionListener`: under `allowHTTP1` the socket goes
+to the HTTP/1 fallback, otherwise it receives node's 403 text and is closed after
+`unknownProtocolTimeout` — measured on a live node server; a no-ALPN TLS connection is
+never an HTTP/2 session on either stack.
 
 `out/test-cert.pem` and `out/test-key.pem` are **self-signed localhost fixtures**
 generated for the test suite. They are not credentials, are not shipped, and are
