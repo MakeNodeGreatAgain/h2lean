@@ -243,6 +243,22 @@ test('a repeated single-value field keeps the first copy, on both stacks', async
 // before any octet exists, and options.strictSingleValueFields: false turns the rule
 // off. The inbound half (a repeated field read first-wins) is the test above.
 test('outbound duplicates throw like node, and the option turns the rule off', async () => {
+  // The strict single-value rule is a recent node feature: 20/22 accept the option
+  // silently and encode the duplicates onto the wire (their internal/http2/util has
+  // no strict parameter in buildNgHeaderString -- read out of those binaries in
+  // this session). Probed, not version-tabled, per CONTRIBUTING §1: the differential
+  // arms pin the host's measured answer, so they run only where the host knows the
+  // option; on an older host the file pins h2lean's own verdicts instead, which are
+  // the node 26 measurements the CHANGELOG records.
+  const native = require('node:http2');
+  const hostStrict = (() => {
+    try {
+      native.createServer({ strictSingleValueFields: 'x' });
+      return false;
+    } catch (e) {
+      return e.code === 'ERR_INVALID_ARG_TYPE';
+    }
+  })();
   const outcomes = async (impl, opts) => {
     const server = [];
     const client = [];
@@ -321,25 +337,34 @@ test('outbound duplicates throw like node, and the option turns the rule off', a
   };
 
   const lite = await outcomes(h2lean, {});
-  const native = await outcomes(require('node:http2'), {});
-  assert.deepStrictEqual(lite, native, 'h2lean must refuse what node refuses');
   assert.deepStrictEqual(lite.server, ['TypeError', 'ERR_HTTP2_HEADER_SINGLE_VALUE',
     'ERR_HTTP2_HEADER_SINGLE_VALUE']);
   assert.deepStrictEqual(lite.client, ['ERR_HTTP2_HEADER_SINGLE_VALUE',
     'ERR_HTTP2_HEADER_SINGLE_VALUE']);
+  if (hostStrict) {
+    assert.deepStrictEqual(lite, await outcomes(native, {}),
+      'h2lean must refuse what node refuses');
+  }
 
   const liteOff = await outcomes(h2lean, { strictSingleValueFields: false });
-  const nativeOff = await outcomes(require('node:http2'), { strictSingleValueFields: false });
-  assert.deepStrictEqual(liteOff, nativeOff);
   assert.deepStrictEqual(liteOff.server, ['TypeError', 'ok', 'ok']);
   assert.deepStrictEqual(liteOff.client, ['ok', 'ok']);
+  if (hostStrict) {
+    assert.deepStrictEqual(liteOff,
+      await outcomes(native, { strictSingleValueFields: false }));
+  }
 
   // a non-boolean is node's ERR_INVALID_ARG_TYPE, thrown where the option is read --
-  // at createServer/connect time, before any socket exists
-  for (const impl of [h2lean, require('node:http2')]) {
-    assert.throws(() => impl.createServer({ strictSingleValueFields: 'x' }),
+  // at createServer/connect time, before any socket exists. h2lean validates
+  // everywhere; the host only where it knows the option.
+  assert.throws(() => h2lean.createServer({ strictSingleValueFields: 'x' }),
+    (e) => e.code === 'ERR_INVALID_ARG_TYPE');
+  assert.throws(() => h2lean.connect('http://127.0.0.1:1', { strictSingleValueFields: 5 }),
+    (e) => e.code === 'ERR_INVALID_ARG_TYPE');
+  if (hostStrict) {
+    assert.throws(() => native.createServer({ strictSingleValueFields: 'x' }),
       (e) => e.code === 'ERR_INVALID_ARG_TYPE');
-    assert.throws(() => impl.connect('http://127.0.0.1:1', { strictSingleValueFields: 5 }),
+    assert.throws(() => native.connect('http://127.0.0.1:1', { strictSingleValueFields: 5 }),
       (e) => e.code === 'ERR_INVALID_ARG_TYPE');
   }
 });
