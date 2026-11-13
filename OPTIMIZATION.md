@@ -219,6 +219,17 @@ side.
     (non-Huffman) branch, where the win is −13% at eight code units and the two arms
     are byte-identical on the wire
     (`bench/micro/probe-hpack-str-enc.js`, `lib/hpack.js`).
+36. **The strict-single-value duplicate check rides `_addField`'s one loop**, against a
+    per-session scratch array cleared per request — not a second pass over the flat
+    list with a `Set`: 451/453 → 399/407 ns per `request()` on an 8-field object with
+    two single-value fields, the check's own cost ~128 → ~76 ns, and the strict-off
+    arm unchanged (319/326 vs 323/332 ns — noise; `bench/micro/req-singles.js`).
+    node's `buildNgHeaderString` runs the same check inline in its one pass with
+    `includes` over a lazily-grown array, so the merged shape is node's shape too,
+    and the residual cost is the per-field `SINGLE_VALUE_FIELDS.has()` lookup the
+    rule itself requires. The `DEFAULT_METHOD` hoist and the one-use closure removal
+    made in the same pass measured nothing — V8 interns string literals and a closure
+    is one allocation — they are readability only.
 
 ## C. Measured and rejected — do not re-litigate without new evidence
 

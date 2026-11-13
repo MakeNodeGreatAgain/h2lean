@@ -123,3 +123,53 @@ test('the date header holds within a second and moves across the boundary', (t) 
   assert.strictEqual(sentDate({ 'x-trailer': 'v' }, { trailer: true, sendDate: true }),
     undefined, 'a trailer block carries no date');
 });
+
+// The fields of one name, in the order the block carries them (flat: name, value, never).
+const valuesOf = (parsed, name) => {
+  const out = [];
+  for (let i = 0; i < parsed.fields.length; i += 3) {
+    if (parsed.fields[i] === name) {
+      out.push(parsed.fields[i + 1]);
+    }
+  }
+  return out;
+};
+
+test('a repeated single-value field is refused outright, not joined', () => {
+  // node's strict-single-value rule, measured (options.strictSingleValueFields, default
+  // on): request() and respond() throw ERR_HTTP2_HEADER_SINGLE_VALUE synchronously,
+  // before any stream or octet exists. A joined value would be one a downstream
+  // HTTP/1.1 translator disagrees with -- the CVE-2020-8287 reading shape.
+  const SINGLE = (e) => e.code === 'ERR_HTTP2_HEADER_SINGLE_VALUE';
+  assert.throws(() => parse({ ':status': 200, 'content-type': ['a', 'b'] }), SINGLE);
+  assert.throws(() => parse({ ':status': 200, authorization: ['a', 'b'] }), SINGLE);
+  // the flat-array form: a second copy of the same name, regular or pseudo
+  assert.throws(() => parse([':status', 200, 'content-type', 'x', 'content-type', 'y']),
+    SINGLE);
+  assert.throws(() => parse([':status', 200, ':status', 201]), SINGLE);
+});
+
+test('an array of one is the value, an empty array carries nothing', () => {
+  const one = parse({ ':status': 200, 'content-type': ['text/plain'] });
+  assert.deepStrictEqual(valuesOf(one, 'content-type'), ['text/plain']);
+  const empty = parse({ ':status': 200, 'content-type': [] });
+  assert.deepStrictEqual(valuesOf(empty, 'content-type'), []);
+  // node records nothing for the empty array, so a later copy of the same name in the
+  // flat form is a first sighting, not a repeat
+  const after = parse([':status', 200, 'content-type', [], 'content-type', 'x']);
+  assert.deepStrictEqual(valuesOf(after, 'content-type'), ['x']);
+});
+
+test('the flat-array form of a block is served like the object form', () => {
+  // measured on node: respond([':status', 200, 'x-a', '1', 'x-a', '2']) serves, and a
+  // repeated NON-single-value field goes out as the two lines the peer joins on read
+  const out = parse([':status', 204, 'x-a', '1', 'x-a', ['2', '3']]);
+  assert.strictEqual(out.status, 204);
+  assert.deepStrictEqual(valuesOf(out, 'x-a'), ['1', '2', '3']);
+});
+
+test('strictSingleValueFields: false turns the outbound rule off', () => {
+  const out = parse({ ':status': 200, 'content-type': ['a', 'b'] },
+    undefined, { strict: false });
+  assert.deepStrictEqual(valuesOf(out, 'content-type'), ['a', 'b']);
+});
