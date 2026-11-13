@@ -180,8 +180,26 @@ test('no ALPN without allowHTTP1: unknownProtocol event, else the 403 text', asy
 });
 
 // http1Options reaches the fallback server; the deprecated top-level class names
-// (DEP0201) migrate into it the same way they do on node.
+// (DEP0202) migrate into it the same way they do on node.
 class MyIncomingMessage extends http.IncomingMessage {}
+
+// Whether the host's own node:http2 honours the http1Options bag. The bag does not
+// exist before node 23: on 20/22 _http_server's storeHTTPOptions() reads only the
+// top-level options.IncomingMessage/ServerResponse (read out of those binaries in
+// this session), and internal/http2/core has no http1Options string at all. The
+// differential comparison below pins node's measured answer, so the host must be
+// one that has the option; probed, not version-tabled, per CONTRIBUTING §1.
+async function hostHonoursHttp1Options() {
+  const { key, cert } = certificates();
+  class Marker extends http.IncomingMessage {}
+  const srv = http2.createSecureServer({
+    key, cert, allowHTTP1: true, http1Options: { IncomingMessage: Marker }
+  }, (req, res) => res.end(String(req instanceof Marker)));
+  const port = await listen(srv);
+  const raw = (await h1Request(port, { ALPNProtocols: ['http/1.1'] })).raw;
+  await closeServer(srv);
+  return summarize(raw).body === 'true';
+}
 
 async function imRun(impl, via) {
   const { key, cert } = certificates();
@@ -200,8 +218,17 @@ async function imRun(impl, via) {
   return { isMyIM: summarize(raw).body };
 }
 
-test('http1Options.IncomingMessage (and the DEP0201 name) reaches the fallback', async () => {
-  for (const via of ['http1Options', 'dep0201']) {
+test('http1Options.IncomingMessage (and the DEP0202 name) reaches the fallback', async () => {
+  const hostSupportsBag = await hostHonoursHttp1Options();
+  for (const via of ['http1Options', 'dep0202']) {
+    if (via === 'http1Options' && !hostSupportsBag) {
+      // No node answer to compare against on this host (20/22 ignore the bag);
+      // h2lean's promise is still assertable, against the node 26 probe that
+      // produced the 'true' this file pins elsewhere.
+      const ours = await imRun(h2lean, via);
+      assert.strictEqual(ours.isMyIM, 'true', via);
+      continue;
+    }
     const node = await imRun(http2, via);
     const ours = await imRun(h2lean, via);
     assert.deepStrictEqual(ours, node, via);

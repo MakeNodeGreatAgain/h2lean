@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format follows
   all) is served by an embedded `node:http.Server` configured from **`http1Options`**
   (the option bag node passes to its HTTP/1 server, with the deprecated top-level
   `Http1IncomingMessage` / `Http1ServerResponse` names migrating into it the way node's
-  DEP0201 does), and one `request` handler — or `upgrade`, `checkContinue`, `connect`,
+  DEP0202 does), and one `request` handler — or `upgrade`, `checkContinue`, `connect`,
   `clientError` listener — receives both kinds of request. With the fallback off, a
   no-ALPN connection now gets node's `unknownProtocol` event, or the 403 text node sends
   when nobody listens, instead of a silent destroy; the socket is bounded by
