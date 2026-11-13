@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.2.4] - 2026-11-13
+
+### Fixed
+
+- **The GOAWAY for a refused header block names the block's stream as its last-stream id, as
+  node's does.** nghttp2 opens the stream when the HEADERS frame is accepted — after the
+  length, padding and priority checks, before the block is decoded — so when the block is
+  refused (an undecodable one, a header list over `maxHeaderListSize`), node's GOAWAY names
+  that stream id while h2lean named only the streams a stream object was made for — 0 here.
+  The last-stream id is the retry boundary a client reads: the lower id told the peer it may
+  resend a request that was already acted on. Control frames refused above the line and frames
+  refused before the acceptance point (over `maxFrameSize`, malformed padding) do not move the
+  id — measured on both stacks, the boundary is exact.
+
 ## [0.2.3] — 2026-11-13
 
 ### Fixed

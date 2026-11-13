@@ -365,9 +365,6 @@ One line each; the measurements, the tried fixes and the standing instruction li
 * **An `end()` with no body on a stream that never responded.** node puts nothing on the
   wire; h2lean answers `200` with an empty `DATA/ES`. KNOWN DIVERGENCE in
   `test/response-start.test.js`.
-* **GOAWAY last-stream id for a frame refused before its stream was processed.** node
-  names the stream, h2lean names only reached ids. KNOWN DIVERGENCE in
-  `test/inbound-limits.test.js`; no client can act on the difference.
 * **An answer queued in the same read batch as a refusal** goes out here and is discarded
   by node; the codes agree, only whether a HEADERS reaches the peer differs. KNOWN
   DIVERGENCE in `test/inbound-limits.test.js`; it explains the two h2lean-only

@@ -27,8 +27,9 @@
 //     same connection. h2lean refused with PROTOCOL_ERROR.
 //   * a literal whose length prefix announces more than the frame contains is a HPACK failure:
 //     GOAWAY(COMPRESSION_ERROR), whether the claim is 2 000 000 or 2 000 000 000 octets. Both
-//     stacks answer the same code; the one thing they do not agree on is the last-stream id in
-//     that GOAWAY, which is pinned as its own test below rather than smoothed over here.
+//     stacks answer the same code and the same last-stream id: nghttp2 opens the stream when the
+//     HEADERS frame is accepted, before the block is decoded, so the GOAWAY names the stream of
+//     the refused frame -- pinned as its own test below.
 //   * an unknown frame type is DISCARDED (RFC 9113 5.5): type 10 is ALTSVC (RFC 7807), and the
 //     request that follows it is served. Type 99 and 0xff behave the same.
 //   * one frame can break two rules at once, and the two stacks then disagree about which rule
@@ -1205,33 +1206,38 @@ test('a peer GOAWAY with NO_ERROR starts our own graceful close', async () => {
 
 // ---- what the two stacks still disagree on ---------------------------------------------------
 
-test('KNOWN DIVERGENCE: the last-stream id of a GOAWAY sent for an unread frame', async () => {
-  // Measured, and left alone rather than emulated: when a frame is rejected before its stream
-  // was ever processed (an oversized HEADERS, a HPACK failure), node's GOAWAY names the stream
-  // id it read out of that frame's header, while h2lean names the highest stream it actually
-  // began to process -- 0 here. A client that sees the lower id retries the request, which is
-  // the safe direction, so this is a difference in what a peer may assume, not in whether the
-  // frame was refused. Recorded in AGENTS.md §10. The CODE is compared in the tests above; this
-  // test exists so that a change here is noticed rather than silently accepted.
+test('the GOAWAY for a refused header block names the block\'s stream, as node\'s does', async () => {
+  // nghttp2 opens the stream in prep_frame, after the frame's length, padding and priority
+  // checks but BEFORE the block is decoded or any verdict on it is given -- so when a frame is
+  // rejected after that point (an undecodable block, a header list over maxHeaderListSize),
+  // node's GOAWAY names the stream id it read out of that frame's header. h2lean used to name
+  // only the streams a stream object was made for -- 0 here -- which tells a client the request
+  // is retryable when it was already acted on: the last-stream id IS the retry boundary, and
+  // naming the refused stream is the safe direction. Measured on v26.12.1 for the whole family
+  // (out/probe-last-id.js), and the boundary is exact on both stacks: WINDOW_UPDATE, RST_STREAM
+  // and DATA refused ABOVE the line answer last=1 -- the served stream -- on both, because
+  // nghttp2 does not open a stream for a control frame; frames refused BEFORE the acceptance
+  // point (over max frame size, malformed padding, an even id) do not move it either. The CODE
+  // is compared in the tests above.
   const oversized = (sock) => {
     sock.write(frame(f.HEADERS, EOH | EOS, 1, Buffer.concat([REQ, big(16370)])));
   };
   assert.strictEqual((await once(nodeHttp2, undefined, false, oversized)).last, 1,
     'node names the stream of the frame it refused');
-  assert.strictEqual((await once(h2lean, undefined, false, oversized)).last, 0,
-    'h2lean names only the streams it began to process');
+  assert.strictEqual((await once(h2lean, undefined, false, oversized)).last, 1,
+    'h2lean names it too');
   // The same shape for the HPACK 6.3 refusal measured by h2spec's hpack/4.2: the frame decodes
   // far enough to reach a stream, the size update after the field line is what kills the
-  // connection, and node still names the stream id off the refused frame's header while h2lean
-  // has not begun processing it. Checked on the id alone -- the CODE is pinned by the test above,
-  // and both stacks answer GOAWAY(COMPRESSION_ERROR) there.
+  // connection, and node names the stream id off the refused frame's header. Checked on the id
+  // alone -- the CODE is pinned by the test above, and both stacks answer
+  // GOAWAY(COMPRESSION_ERROR) there.
   const lateResize = (sock) => {
     sock.write(req(Buffer.concat([REQ, Buffer.from([0x21])])));
   };
   assert.strictEqual((await once(nodeHttp2, undefined, false, lateResize)).last, 1,
     'node names the stream of the header block it failed to decode');
-  assert.strictEqual((await once(h2lean, undefined, false, lateResize)).last, 0,
-    'h2lean names only the streams it began to process');
+  assert.strictEqual((await once(h2lean, undefined, false, lateResize)).last, 1,
+    'h2lean names it too');
 });
 
 test('KNOWN DIVERGENCE: a header frame that is both over size and undecodable', async () => {
@@ -1247,8 +1253,10 @@ test('KNOWN DIVERGENCE: a header frame that is both over size and undecodable', 
   // Not emulated, on purpose. Both codes are connection errors and the connection ends either
   // way, and the peer cannot act on the difference; matching node would mean moving the length
   // check after the decode, which is exactly where it can no longer save the reading of an
-  // over-size payload. The last-stream id of the two GOAWAYs differs the same way it does in
-  // the test above. Pinned so that a change in either verdict is a decision and not a surprise.
+  // over-size payload. The last-stream id of the two GOAWAYs agrees -- nghttp2 opens the stream
+  // when the frame is accepted, before either check runs (the test above) -- so the CODE is the
+  // only verdict that differs. Pinned so that a change in either verdict is a decision and not a
+  // surprise.
   // Compared: the GOAWAY code alone, not the whole transcript. node also resets the stream whose
   // block failed to decode, and whether that RST_STREAM reaches the peer in front of the GOAWAY is
   // settled by scheduling and nothing else -- asserting the full string made this test fail once in

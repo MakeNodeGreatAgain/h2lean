@@ -312,12 +312,6 @@ the decision, the measurements and the pins. None of them is a to-do list.
   HEADERS in front of the DATA — h2lean used to queue the body first), and node's
   `Http2Stream` is a `Duplex`, so it emits `'finish'` on the stream object while h2lean's
   stream is an `EventEmitter` and does not.
-* **`GOAWAY` last-stream id for a frame refused before its stream was processed.** node
-  names the stream (last=1), h2lean names only streams it had reached (last=0). Pinned as
-  a KNOWN DIVERGENCE in `test/inbound-limits.test.js`; both stacks keep the connection up,
-  so it is a byte difference no client can act on. Measured on the whole family — an
-  oversized HEADERS, an undecodable CONTINUATION, and a HPACK size update at the end of a
-  block (h2spec hpack/4.2) — and it is the same shape in all three.
 * **An answer queued in the same read batch as a refusal goes out here and is discarded
   by node.** A handler that responds as soon as the stream opens has its HEADERS flushed
   by h2lean even when a later frame in the batch breaks a message-framing rule; nghttp2

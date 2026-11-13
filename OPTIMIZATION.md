@@ -230,6 +230,65 @@ side.
     rule itself requires. The `DEFAULT_METHOD` hoist and the one-use closure removal
     made in the same pass measured nothing — V8 interns string literals and a closure
     is one allocation — they are readability only.
+37. **The same scratch-array shape in `parse()` (lib/headers.js), kept for shape
+    parity, not speed.** The client's item-36 win does not transfer: request() had a
+    second pass over the flat list to remove, and `parse()` never did — its check
+    already rode the one loop, so the only thing the Set→array swap removes is the
+    per-call `new Set()` — and a fresh `Set` costs what the scratch clear costs
+    (22 vs 23 ns, `bench/micro/parse-singles-parts.js`; has/add vs indexOf/push on
+    two names differ by ~5 ns, also there). At the granularity `parse()` acts on the
+    whole thing is inside the noise: 431–437 → 437–446 ns per 8-field response with
+    strict on, 369–387 → 371–380 ns with strict off
+    (`bench/micro/parse-singles.js`). Kept because it is node's own
+    `buildNgHeaderString` shape and the one `request()` carries — three readers of
+    one rule now agree — at a measured cost of nothing. The same pass rebuilt
+    `parse()`'s never-index list without the `.map()` intermediate array and its
+    closure (`neverSet.map(lowerName)` → a plain insert loop): also measured
+    inside the noise at `parse()` granularity — the sensitive arm moved 88–114 →
+    79–106 ns against the strict-on arm — and kept for the two fewer allocations
+    per sensitive response (`bench/micro/parse-singles.js`, sensitive arms). The
+    list itself is only built when a caller passes `sensitive`; a response without
+    one pays nothing.
+38. **`arr.length = 0` is the identity idiom, not the fast one — `arr = []` measures
+    faster.** The claim that keeping the array alive reuses its allocation and saves
+    the GC does not hold on V8: `length = 0` right-trims the backing store, so the next
+    fill re-grows it from scratch — the store costs more than the young-generation bump
+    allocation it saves. Measured with GC counting via PerformanceObserver, which needs
+    a yield to the event loop before the counts are read or it reports zero
+    (`bench/micro/clear-array.js`, node v26.12.1, two runs): clear-then-fill at k=2 is
+    36 ns against 23 ns for a fresh array per op, and the fresh arm's extra garbage
+    costs ~1.5 ns/op in extra scavenges — net a fresh array wins by ~13 ns; k=64 and
+    k=4096 are worse on BOTH metrics for `length = 0` (207 vs 140 ns, 2971 vs 1523 GCs;
+    12.6 vs 11.1 µs, 2162 vs 1028 GCs). The four clears whose arrays nobody else holds
+    (the singles scratch in headers.js, `_singlesSeen` and `_outboundQueue`, `_ended`)
+    are therefore reassigned, not length-cleared; the two that cannot be are hpack's
+    decode `out` — caller-owned and refilled by reference, reassignment inside decode
+    would leave the caller on the stale array — and `fast-timer.js`, vendored.
+39. **Preallocation with a cursor beats both push shapes, holey reads included.**
+    `new Array(n)` plus `arr[c++] = v` with the cursor reset per use writes without
+    growth and never allocates; the cost is the array staying HOLEY_ELEMENTS forever,
+    so every read carries a hole check. Measured as a whole fill-then-read cycle
+    (`bench/micro/prealloc.js`, node v26.12.1): at k=4 the cursor arm is 10 ns against
+    22 ns for a fresh push array and 42 ns for the length=0 refill, at k=20 41/69/105,
+    at k=64 124/179/554, at k=4096 8.2/13.8/35.3 µs — and the cursor arm counts zero
+    GC collections at every size. A candidate for hpack's decode `out` list, which is
+    exactly this shape (fill by push, consumed by index); not taken yet because the
+    consumers read `out.length` in half a dozen places and the shape cache stores a
+    copy — a contract change, not a three-line swap.
+40. **Buffer.poolSize: pooled allocation is 2-3× cheaper at the threshold, but a
+    live slice pins the whole pool.** node pools an allocUnsafe only when
+    `size < poolSize >>> 1` (node/lib/buffer.js allocate()), so at the default 8192
+    everything at or above 4096 octets is a direct external allocation. Measured
+    (`bench/micro/pool-size.js`, node v26.12.1): a 4096-octet alloc-and-drop is
+    306 ns and 359 GCs at poolSize 8192 against 104 ns and 264 GCs at 32768; an
+    8192-octet one is 220 ns at the default against 109 ns at 65536. The price is
+    retention: every pooled slice is a view into ONE pool ArrayBuffer, and holding a
+    single 100-octet slice pins all 8192 (or 65536) octets against a full gc —
+    measured as process.memoryUsage().arrayBuffers. h2lean's per-frame allocUnsafe
+    calls are all far below the default threshold and its big buffers (the staging
+    scratch, the header buffer) are per-connection, allocated once — so a larger
+    poolSize buys the request path nothing and risks retention through response
+    chunks; left at the default.
 
 ## C. Measured and rejected — do not re-litigate without new evidence
 

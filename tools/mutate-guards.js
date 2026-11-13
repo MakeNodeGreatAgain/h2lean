@@ -472,8 +472,8 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'the ended-in-this-batch memory reaches only as far as the read that made it',
-    from: '    this._ended.length = 0;',
-    to: '    if (false) this._ended.length = 0;'
+    from: '    this._ended = []; // the last batch\'s finished streams are no longer here',
+    to: '    if (false) this._ended = []; // the last batch\'s finished streams are no longer here'
   },
   {
     file: 'lib/session.js',
