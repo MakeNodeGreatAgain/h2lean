@@ -359,9 +359,6 @@ One line each; the measurements, the tried fixes and the standing instruction li
 * **Graceful close: who is allowed to finish it.** The predicates differ (h2lean counts
   owed write callbacks; node drains nghttp2 first) and three fixes were tried and measured
   red. A decision, not an oversight — pinned by `test/goaway.test.js`.
-* **A server stream nobody read the request of.** node auto-closes it after the response
-  (`RST_STREAM(NO_ERROR)` on the wire); h2lean holds the stream until the peer ends its
-  half. Measured boundary with `tools/probe-stream-teardown.js`.
 * **An `end()` with no body on a stream that never responded.** node puts nothing on the
   wire; h2lean answers `200` with an empty `DATA/ES`. KNOWN DIVERGENCE in
   `test/response-start.test.js`.

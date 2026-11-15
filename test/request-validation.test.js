@@ -326,6 +326,10 @@ test('a trailer block may not contain pseudo-headers', async () => {
   const reached = [];
   srv.on('stream', (stream, _headers) => {
     reached.push('stream');
+    // the refusal is a stream error the application sees: node answers this block with
+    // RST_STREAM(PROTOCOL_ERROR) on the wire and ERR_HTTP2_STREAM_ERROR on the stream
+    // (measured, tools/probe-trailer-rst.js), so an 'error' listener is part of the shape
+    stream.on('error', () => {});
     stream.on('trailers', () => reached.push('trailers'));
     stream.respond({ ':status': 200 });
     stream.end('body');

@@ -184,8 +184,8 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'maxHeaderListSize is measured in HPACK entry octets (+32 per field, RFC 7541 4.1)',
-    from: '        // flat is name, value, name, value: one entry overhead per field line\n'
-      + '        bytes += (flat.length >> 1) * ENTRY_OVERHEAD;\n',
+    from: '        // \'fields\' is name, value, name, value: one entry overhead per field line\n'
+      + '        bytes += (fcount >> 1) * ENTRY_OVERHEAD;\n',
     to: ''
   },
   {
@@ -372,7 +372,7 @@ const anchors = [
     file: 'lib/hpack.js',
     what: 'a dynamic-table size update belongs at the start of a header block',
     from: '        // the octets arrive would rebuild a different context from ours.\n'
-      + '        if (out.length !== 0) {',
+      + '        if (n !== 0) {',
     to: '        // the octets arrive would rebuild a different context from ours.\n'
       + '        if (false) {'
   },
@@ -439,7 +439,18 @@ const anchors = [
       + '    // between "the handler declined the request" and "the handler was never reached",\n'
       + '    // and only the second one denies a smuggling chain its second reader.\n'
       + '    if (verdict !== null && verdict.problem !== undefined) {\n'
-      + '      this.sendRst(sid, PROTOCOL_ERROR);\n'
+      + '      // A live stream takes the stream error, not a bare reset: measured on node\n'
+      + '      // (tools/probe-trailer-rst.js), a trailer block carrying a pseudo-header is\n'
+      + '      // RST_STREAM(PROTOCOL_ERROR) on the wire AND ERR_HTTP2_STREAM_ERROR + \'close\'\n'
+      + '      // on the stream -- the same shape as the missing-END_STREAM refusal above --\n'
+      + '      // and the closed stream is what keeps the unread-request auto-close\n'
+      + '      // (Http2Stream[kMaybeDestroy], see lib/stream.js _maybeAutoClose) from\n'
+      + '      // putting a second RST(NO_ERROR) on the wire behind the refusal\'s.\n'
+      + '      if (existing !== undefined) {\n'
+      + '        this._streamError(existing, PROTOCOL_ERROR, verdict.problem);\n'
+      + '      } else {\n'
+      + '        this.sendRst(sid, PROTOCOL_ERROR);\n'
+      + '      }\n'
       + '      return;\n'
       + '    }\n',
     to: '      this.state.lastProcStreamID = sid;\n'
@@ -450,7 +461,18 @@ const anchors = [
       + '    // between "the handler declined the request" and "the handler was never reached",\n'
       + '    // and only the second one denies a smuggling chain its second reader.\n'
       + '    if (verdict !== null && verdict.problem !== undefined) {\n'
-      + '      this.sendRst(sid, PROTOCOL_ERROR);\n'
+      + '      // A live stream takes the stream error, not a bare reset: measured on node\n'
+      + '      // (tools/probe-trailer-rst.js), a trailer block carrying a pseudo-header is\n'
+      + '      // RST_STREAM(PROTOCOL_ERROR) on the wire AND ERR_HTTP2_STREAM_ERROR + \'close\'\n'
+      + '      // on the stream -- the same shape as the missing-END_STREAM refusal above --\n'
+      + '      // and the closed stream is what keeps the unread-request auto-close\n'
+      + '      // (Http2Stream[kMaybeDestroy], see lib/stream.js _maybeAutoClose) from\n'
+      + '      // putting a second RST(NO_ERROR) on the wire behind the refusal\'s.\n'
+      + '      if (existing !== undefined) {\n'
+      + '        this._streamError(existing, PROTOCOL_ERROR, verdict.problem);\n'
+      + '      } else {\n'
+      + '        this.sendRst(sid, PROTOCOL_ERROR);\n'
+      + '      }\n'
       + '      return;\n'
       + '    }\n'
       + '    if (existing === undefined) this._maxInboundSid = sid;\n'
@@ -622,7 +644,7 @@ const anchors = [
     file: 'lib/hpack.js',
     what: 'a size update after a field line is refused by the piece decoder too',
     from: '        // block -- before its first field line. See decode() for the measurement.\n'
-      + '        if (out.length !== 0) {',
+      + '        if (n !== 0) {',
     to: '        // block -- before its first field line. See decode() for the measurement.\n'
       + '        if (false) {'
   },

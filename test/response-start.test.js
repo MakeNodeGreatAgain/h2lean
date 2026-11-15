@@ -161,12 +161,12 @@ test('write() then end() keeps the headers first and closes with END_STREAM', as
   const got = await both((stream) => {
     stream.write('x'); stream.end('body');
   });
-  // node adds RST(0) -- the auto-close of a stream whose request nobody read, AGENTS.md §10.
+  // RST(0) on BOTH arms: the unread-request auto-close (lib/stream.js
+  // _maybeAutoClose) -- node closes the stream the application finished whose
+  // request nobody read, and h2lean does the same now.
   assert.strictEqual(got[0].wire,
     'HEADERS/EH{:status=200} DATA(x) DATA(body)/ES RST(0)', `node: ${got[0].wire}`);
-  assert.strictEqual(got[1].wire,
-    'HEADERS/EH{:status=200} DATA(x) DATA(body)/ES',
-    `h2lean ${got[1].wire} vs node ${got[0].wire}: the response frames must match`);
+  assert.strictEqual(got[1].wire, got[0].wire, `h2lean: ${got[1].wire}`);
 });
 
 test('an explicit respond() is left alone', async () => {
@@ -176,24 +176,24 @@ test('an explicit respond() is left alone', async () => {
     (stream) => {
       stream.respond({ ':status': 201 }); stream.end('body');
     });
+  // RST(0) on both arms -- the unread-request auto-close, as above.
   assert.strictEqual(got[0].wire,
     'HEADERS/EH{:status=201} DATA(body)/ES RST(0)', `node: ${got[0].wire}`);
-  assert.strictEqual(got[1].wire,
-    'HEADERS/EH{:status=201} DATA(body)/ES', `h2lean: ${got[1].wire}`);
+  assert.strictEqual(got[1].wire, got[0].wire, `h2lean: ${got[1].wire}`);
 });
 
 test('KNOWN DIVERGENCE: end() with no body answers 200 where node says nothing', async () => {
   // node finishes the writable side without the response ever starting: no HEADERS, no DATA,
   // no END_STREAM, and headersSent stays false -- the stream is let go only when the connection
-  // is. h2lean answers a plain 200 with an empty DATA/ES instead, because a stream the peer
-  // never gets an answer on is only released by the idle timeout. Changing that means the
-  // local-half-only close going through _endLocalSide() with no frame at all, which the
-  // teardown traces have never covered; recorded in AGENTS.md §10 rather than done blind.
+  // is. h2lean answers a plain 200 with an empty DATA/ES instead, and the response that started
+  // also arms the unread-request auto-close: RST(0) follows the empty answer, where node has
+  // nothing to close and nothing on the wire at all. The divergence is the answer itself
+  // (recorded in AGENTS.md §10); the RST(0) behind it is node's own auto-close rule.
   const got = await both((stream) => {
     stream.end();
   });
   assert.strictEqual(got[0].wire, '(nothing)', `node: ${got[0].wire}`);
   assert.strictEqual(got[0].state, '{"headersSent":false,"rst":0}', `node: ${got[0].state}`);
-  assert.strictEqual(got[1].wire, 'HEADERS/EH{:status=200} DATA()/ES', `h2lean: ${got[1].wire}`);
+  assert.strictEqual(got[1].wire, 'HEADERS/EH{:status=200} DATA()/ES RST(0)', `h2lean: ${got[1].wire}`);
   assert.strictEqual(got[1].state, '{"headersSent":true,"rst":0}', `h2lean: ${got[1].state}`);
 });

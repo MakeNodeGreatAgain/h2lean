@@ -235,6 +235,13 @@ The convention in one paragraph: the paired matrix is the unit of proof; every c
   knowledge is written down once, centrally, and a second copy in `lib/` goes stale the
   moment the item is re-measured. What stays in `lib/`: the mechanism a reader needs next
   to the code, RFC/§ anchors, and the file-header difference lists (`AGENTS.md` §2, §4).
+* A probe or microbench a committed file cites must itself be committed: microbenches
+  under `bench/micro/`, wire and session probes under `tools/` — both directories are
+  linted and on GitHub. `out/` is gitignored scratch, so an `out/` path in
+  `OPTIMIZATION.md`, `SECURITY.md`, a test comment or a `lib/` comment dangles for every
+  reader who is not the author; new measurements land in the committed directories, and
+  the citations that predate this rule move when the file that carries them is next
+  touched.
 * The repository is on GitHub (`origin`, branch `main`). One commit per completed change,
   made as soon as the change is verified (see `AGENTS.md` §9 for what "verified" means);
   do not batch unrelated work. Message: `type: imperative summary` (`fix:`, `perf:`,
@@ -285,21 +292,28 @@ the decision, the measurements and the pins. None of them is a to-do list.
   side does not, so the peer's answer to our GOAWAY cannot arrive. What is missing here is
   the predicate, not the teardown: nothing re-runs `_maybeFinishClose()` once the last
   stream has answered.
-* **A server stream nobody read the request of.** node closes it as soon as the response
-  is finished: `Http2Stream[kMaybeDestroy]()` checks "headersSent, server session, no
-  trailers, `!state.didRead`, `readableFlowing === null`" and calls `stream.close()` from
-  the writable side's `'finish'`. On the wire that is `RST_STREAM(NO_ERROR)` after the
-  response, and it is what releases the session's own closing predicate. h2lean has no
-  such rule: the stream stays live until the peer ends its half, so a peer that sends
-  HEADERS without END_STREAM and no DATA holds a stream (and a `_liveStreams` slot) open
-  indefinitely — only the idle timeout lets it go. Measured both sides with
-  `tools/probe-stream-teardown.js` (`answer-only` versus `resume-then-answer`, which is
-  node's `didRead` boundary: reading the request stops the auto-close, and h2lean already
-  agrees there). Fixing it means emitting the auto-close and its `RST_STREAM` on a path no
-  trace covers today — a task of its own, not a switch. One measured consequence of
-  leaving it open: when such a peer resets the socket, h2lean reports
-  `sessionError:ECONNRESET` because it still owns a live stream, while node — which closed
-  the stream at the end of the response — reports nothing.
+* **A server stream nobody read the request of — fixed in 0.2.5.** node closes it as soon as
+  the response is finished: `Http2Stream[kMaybeDestroy]()` checks "headersSent, server
+  session, no trailers, `!state.didRead`, `readableFlowing === null`" and calls
+  `stream.close()` from the writable side's `'finish'`. On the wire that is
+  `RST_STREAM(NO_ERROR)` after the response, and it is what releases the session's own
+  closing predicate. h2lean now runs the same rule: `lib/stream.js` `_maybeAutoClose()`
+  ports the predicate (`_consumeState === 0` is `!didRead && readableFlowing === null`:
+  no reader attached, no `pause()`/`resume()` called) and schedules the close with
+  `setImmediate` — node's own scheduling — emitting `'end'` before `'close'`, the order
+  the eof-body trace reports. Measured boundary with `tools/probe-stream-teardown.js`, all
+  five shapes now agree stack against stack: `resume-then-answer`/`read-then-answer` stop
+  it (node's `didRead` boundary), `answer-never-ended` stops it (writable not finished),
+  `answer-only` produces the same `HEADERS DATA RST(NO_ERROR)` with live=0, and
+  `request-ended` never gets an RST on either stack — nghttp2 refuses to reset a fully
+  closed stream, which h2lean's `_closeIfBothDone` already matched. One consequence folded
+  in: the refusal of a malformed trailer on a live stream became a stream error
+  (`_streamError`, measured `tools/probe-trailer-rst.js` — node answers
+  `RST(PROTOCOL_ERROR)` plus `ERR_HTTP2_STREAM_ERROR` on the stream and no second RST,
+  the closed stream being what suppresses its auto-close), and
+  `test/inbound-limits.test.js`'s same-batch case accepts either reset code because the
+  auto-close can legitimately land between the peer's three writes — the same
+  segmentation race node's own arm sits in.
 * **An `end()` with no body on a stream that never responded.** node puts nothing on the
   wire: no HEADERS, no DATA, no END_STREAM, and `headersSent` stays false — the writable
   side finishes and the stream is let go only when the connection is. h2lean answers `200`

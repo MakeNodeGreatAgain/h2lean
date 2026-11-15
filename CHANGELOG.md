@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.2.5] - 2026-11-15
+
+### Fixed
+
+- **A server stream nobody read the request of is now auto-closed when the response
+  finishes, as node does.** node's `Http2Stream[kMaybeDestroy]` closes such a stream from
+  the writable side's `'finish'` — on the wire `RST_STREAM(NO_ERROR)` right after the
+  response — while h2lean held it until the peer ended its half, so a peer that sent
+  HEADERS without END_STREAM and never any DATA kept a stream (and its `_liveStreams`
+  slot) open until the idle timeout. The node predicate is ported (`lib/stream.js`
+  `_maybeAutoClose`): it fires only when the response is fully written, no trailer was
+  requested or sent, and the request half was never read or flowed — reading the request,
+  pausing it or `stream.on('data')` all stop the auto-close, exactly node's `didRead`
+  boundary. Measured against node with `tools/probe-stream-teardown.js` across all five
+  request shapes; the teardown event order (`'end'` before `'close'` on the unread half)
+  matches node's trace as well.
+
+- **A malformed trailer on a live stream is a stream error, as on node.** The refusal of
+  the trailer block (a pseudo-header in it, or the missing-END_STREAM shape) now closes
+  the stream object — the application sees `ERR_HTTP2_STREAM_ERROR` on `'error'` and then
+  `'close'`, and the closed stream suppresses the unread-request auto-close, so the peer
+  receives exactly one `RST_STREAM(PROTOCOL_ERROR)` — the shape measured on node
+  (`tools/probe-trailer-rst.js`). h2lean previously reset the wire without touching the
+  stream object, leaving a zombie stream that then also emitted the auto-close's second
+  `RST(NO_ERROR)` behind the refusal.
+
 ## [0.2.4] - 2026-11-13
 
 ### Fixed

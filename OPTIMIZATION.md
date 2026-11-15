@@ -271,10 +271,38 @@ side.
     (`bench/micro/prealloc.js`, node v26.12.1): at k=4 the cursor arm is 10 ns against
     22 ns for a fresh push array and 42 ns for the length=0 refill, at k=20 41/69/105,
     at k=64 124/179/554, at k=4096 8.2/13.8/35.3 µs — and the cursor arm counts zero
-    GC collections at every size. A candidate for hpack's decode `out` list, which is
-    exactly this shape (fill by push, consumed by index); not taken yet because the
-    consumers read `out.length` in half a dozen places and the shape cache stores a
-    copy — a contract change, not a three-line swap.
+    GC collections at every size. Taken in 0.2.5 as `FlatList` (lib/flat-list.js):
+    `count` travels next to the backing array; hpack's decode/decodePieces fill the
+    FlatList through `out.push()`, which keeps `count` in lockstep and doubles as
+    the overflow detector at the exact write that grows the store, while the
+    plain-array contract for the test call sites keeps the local cursor and
+    `out.length = n`; the consumers read the valid length once into `fcount` — the
+    shape cache stores a `slice(0, fcount)` copy exactly as it stored one before.
+    Integrated cost measured (`bench/micro/probe-decode-flat.js`, node v26.12.1):
+    one warm decoder re-decoding the same 201-octet, 8-line block, ABBA ×5 — the
+    arms are at parity within session drift (FlatList 2885-2922 ns/decode against
+    2911-2952 for the reused plain array; an earlier shape measured a consistent
+    ~20 ns (~0.7%) edge that no longer reproduced on re-runs) — so the decode-level
+    edge is nil; the win is structural (no right-trimmed refill per block). The
+    instance is module-level (`const FLAT = new FlatList(64)` at each session
+    module's top level): a block's fill and its consumption are synchronous inside
+    one `_processBlock` call, and nothing on that path can reenter frame
+    processing, so no two fills can interleave — and the per-session scratch's
+    cost leaves with it (measured, `bench/micro/probe-flat-shared.js`, node
+    v26.12.1: 100k retained instances = 59.5 MiB, ~624 octets each). A fill past
+    the capacity schedules an end-of-turn shrink (`push()` → `grown()`: one
+    `setImmediate`, then the store is rebuilt at the preallocation), so one
+    oversized block cannot pin its size for the process lifetime. At the
+    container's own granularity (`bench/micro/probe-flat-proxy.js`, node v26.12.1,
+    ABBA ×5): the push fill costs 28 ns per 8-line fill+read cycle against 21-24
+    for a plain array with the inline check — ~0.4 ns per pushed item, invisible
+    at the integrated level. The intermediate cursor+`end(n)` tail measured 22-25
+    against 21-27 — parity with the inline check (`end()` alone ~2 ns/call) — and
+    was replaced by the push mechanism for the class shape (three methods, all
+    used; no per-block tail), not for speed. A `Proxy` set trap to detect the
+    overflow per write was measured and rejected in the same probe: ~2100 ns/block
+    — ~100×, every store and every consumer read crossing the trap machinery, to
+    save one never-taken comparison per block.
 40. **Buffer.poolSize: pooled allocation is 2-3× cheaper at the threshold, but a
     live slice pins the whole pool.** node pools an allocUnsafe only when
     `size < poolSize >>> 1` (node/lib/buffer.js allocate()), so at the default 8192
