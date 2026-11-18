@@ -90,7 +90,7 @@ Compatibility target is the **public surface** of `node:http2`: names, argument 
   server.listen(8080);
 ```
 
-Same class names (`Http2Session`, `Http2Stream`, `Http2ServerRequest`, `Http2ServerResponse`), same event names, same `Http2Session` and settings semantics, all 240 protocol constants re-exported from `node:http2` itself — user code that compares `error.code !== http2.constants.NGHTTP2_ENHANCE_YOUR_CALM` keeps working unchanged. Both transports on both sides: `createServer` (h2c), `createSecureServer` (h2s), `connect()` over cleartext and TLS with node's ALPN rules.
+Same class names (`Http2Session`, `Http2Stream`, `Http2ServerRequest`, `Http2ServerResponse`), same event names, same `Http2Session` and settings semantics, all 240 protocol constants re-exported from `node:http2` itself — user code that compares `error.code !== http2.constants.NGHTTP2_ENHANCE_YOUR_CALM` keeps working unchanged. Both transports on both sides: `createServer` (h2c), `createSecureServer` (h2s), `connect()` over cleartext and TLS with node's ALPN rules, and `performServerHandshake()` to run a server session over a socket you already hold.
 
 Where behavior deliberately differs from node, it is **documented, measured, and pinned by tests** — never silent. Known divergences: [CONTRIBUTING.md](./CONTRIBUTING.md) §5.
 
@@ -236,10 +236,9 @@ h2lean terminates **untrusted bytes from the internet** and turns them into obje
 
 ## ⚠️ Not Implemented — Said Loudly
 
-Two APIs are absent, and both fail **loudly** with `ERR_H2LEAN_NOT_IMPLEMENTED` — never a silent wrong answer:
+One API is absent, and it fails **loudly** with `ERR_H2LEAN_NOT_IMPLEMENTED` — never a silent wrong answer:
 
 - **Server push** — removed from browsers in 2022 and considered obsolete; the safer replacement is [Early Hints (103)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/103).
-- **`performServerHandshake`** — no known use case outside node's own tests.
 
 ## 📚 Documentation
 

@@ -322,7 +322,7 @@ test('a 200 KB response over TLS arrives intact on both stacks', async () => {
   assert.strictEqual(ours.patternOk, true, 'every byte reached the peer in order');
 });
 
-test('the h2c server keeps reporting no encryption and no ALPN', async () => {
+test('the h2c server reports no encryption and alpnProtocol h2c, like node', async () => {
   const srv = h2lean.createServer();
   const seen = [];
   srv.on('stream', (stream) => {
@@ -334,7 +334,9 @@ test('the h2c server keeps reporting no encryption and no ALPN', async () => {
   const client = http2.connect(`http://127.0.0.1:${port}`);
   client.on('error', () => {});
   await tlsRequest(client, '/clear');
-  assert.deepStrictEqual(seen, [{ encrypted: false, alpn: null }]);
+  // node's cleartext server session reads alpnProtocol 'h2c', not null (measured on
+  // v26.12.1); h2lean used to report null here, a divergence now closed.
+  assert.deepStrictEqual(seen, [{ encrypted: false, alpn: 'h2c' }]);
   client.destroy();
   srv.close();
 });

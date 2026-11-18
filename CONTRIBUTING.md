@@ -30,6 +30,15 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   a test, prefer asserting node's measured value over asserting h2lean's own behaviour —
   a pinned string like `'stream,goaway:0/0,goaway:0/0'` with a comment saying it was read
   off node is the standard.
+* node's own suite is a scenario source. The `test/parallel/test-http2-*.js` files in the
+  node repository exercise the exact corners a drop-in replacement has to match; read them
+  at a pinned revision (`https://raw.githubusercontent.com/nodejs/node/<sha>/test/parallel/…`).
+  `test-http2-perform-server-handshake.js` — a `stream.duplexPair()` round trip and the
+  double-bind refusal — is the worked example behind `test/server-handshake.test.js`. Mine
+  them for *scenarios*, not for assertions to copy: they `require('../common')` and node
+  internals, and some pin behaviour that has since changed. Re-express each scenario as a
+  differential case and verify the expected value against the running v26.12.1 binary first
+  (AGENTS.md §3) — a node test is a hint about what to measure, never the measurement itself.
 * A late `'error'` event on a stream after the test body finished fails the file silently.
   Stress tests must destroy their clients and clear their timers.
 

@@ -3,6 +3,31 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.2.6] - 2026-11-18
+
+### Added
+
+- **`performServerHandshake(socket, options)`** — a server `Http2Session` over a socket the
+  caller already holds, with no server object, as node's does (`initializeOptions` +
+  `new ServerHttp2Session(options, socket, undefined)`). It speaks the `stream` API only (no
+  compat layer, because there is no server to attach one to), accepts a `net.Socket`, a
+  `TLSSocket` or any generic `Duplex` (`stream.duplexPair()` works), and matches node on the
+  socket-lifetime behaviour measured off v26.12.1 (`tools/probe-handshake.js`): a
+  still-connecting socket is waited for, a paused socket's buffered octets are drained, and
+  binding a socket twice throws `ERR_HTTP2_SOCKET_BOUND`. `options`/`options.settings` are
+  validated with node's `ERR_INVALID_ARG_TYPE` codes, and only the asked-for settings are
+  advertised to the peer. Pinned by `test/server-handshake.test.js`, whose scenarios mirror
+  node's own `test/parallel/test-http2-perform-server-handshake.js`.
+
+### Fixed
+
+- **A server session's `'connect'` event now fires at setup with `(session, socket)`, as
+  node's does.** It previously fired when the peer's preface arrived and carried no
+  arguments; node emits it from `setupHandle` on the next tick after the session is bound,
+  before any frame is read (`tools/probe-handshake.js` CASE1/CASE6).
+- **A cleartext server session reports `alpnProtocol === 'h2c'`, as node's does.** It was
+  `null` before; node reads `'h2c'` for a non-encrypted session.
+
 ## [0.2.5] - 2026-11-15
 
 ### Fixed

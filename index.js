@@ -10,8 +10,8 @@
 'use strict';
 
 const nodeHttp2 = require('node:http2');
-const { createServer, createSecureServer, Http2Server, Http2SecureServer,
-  Http2ServerRequest, Http2ServerResponse, notImplemented } = require('./lib/server');
+const { createServer, createSecureServer, performServerHandshake, Http2Server, Http2SecureServer,
+  Http2ServerRequest, Http2ServerResponse } = require('./lib/server');
 const { Http2Session, OUR_DEFAULTS, PEER_DEFAULTS, SETTINGS_BY_ID, ID_BY_SETTING } = require('./lib/session');
 const { DATA, HEADERS, PRIORITY, RST_STREAM, SETTINGS, PUSH_PROMISE, PING, GOAWAY,
   WINDOW_UPDATE, CONTINUATION } = require('./lib/frames');
@@ -54,7 +54,7 @@ module.exports = {
   createServer,
   createSecureServer,
   connect,
-  performServerHandshake: () => { throw notImplemented('performServerHandshake'); },
+  performServerHandshake,
   getDefaultSettings: () => ({ ...OUR_DEFAULTS }),
   getPackedSettings,
   getUnpackedSettings,
