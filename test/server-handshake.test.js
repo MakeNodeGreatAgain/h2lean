@@ -172,6 +172,8 @@ test('a still-connecting socket is waited for, then connects', async () => {
 });
 
 test('the options validation refuses what node refuses', async () => {
+  // The options/settings type checks are node's on every supported version, so
+  // they stay differential everywhere.
   await both(async (impl) => {
     const socket = new Duplex({ read() {}, write() {} });
     const codes = {};
@@ -181,8 +183,7 @@ test('the options validation refuses what node refuses', async () => {
       ['optionsNumber', 5],
       ['settingsNull', { settings: null }],
       ['settingsArray', { settings: [] }],
-      ['settingsNumber', { settings: 5 }],
-      ['strictString', { strictSingleValueFields: 'yes' }]
+      ['settingsNumber', { settings: 5 }]
     ];
     for (const [label, opts] of cases) {
       // a fresh socket per case: a refused handshake never binds, but a successful
@@ -201,6 +202,39 @@ test('the options validation refuses what node refuses', async () => {
     socket.destroy();
     return codes;
   });
+
+  // strictSingleValueFields type validation is a recent node feature: 20/22 accept
+  // any value silently (probed off those binaries in this session -- a string and a
+  // number both pass), while node 26 throws ERR_INVALID_ARG_TYPE on a non-boolean.
+  // Probed, not version-tabled, per CONTRIBUTING §1: h2lean validates everywhere (the
+  // node 26 measurement the CHANGELOG records); the host arm runs only where the host
+  // knows the option. Same gate as test/share-headers.test.js.
+  const hostStrict = (() => {
+    try {
+      nodeHttp2.createServer({ strictSingleValueFields: 'x' });
+      return false;
+    } catch (e) {
+      return e.code === 'ERR_INVALID_ARG_TYPE';
+    }
+  })();
+  const strictVerdict = (impl) => {
+    const sock = new Duplex({ read() {}, write() {} });
+    let code;
+    try {
+      const s = impl.performServerHandshake(sock, { strictSingleValueFields: 'yes' });
+      s.on('error', () => {});
+      code = 'accepted';
+      s.destroy();
+    } catch (e) {
+      code = e.code;
+    }
+    sock.destroy();
+    return code;
+  };
+  assert.strictEqual(strictVerdict(h2lean), 'ERR_INVALID_ARG_TYPE');
+  if (hostStrict) {
+    assert.strictEqual(strictVerdict(nodeHttp2), 'ERR_INVALID_ARG_TYPE');
+  }
 });
 
 test('only the asked-for settings are advertised to the peer', async () => {
