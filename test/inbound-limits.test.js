@@ -727,10 +727,24 @@ test('a PRIORITY frame is five octets, names a stream, and its payload is never 
     sock.write(frame(f.PRIORITY, 0, 1, Buffer.alloc(4)));
     sock.write(req(REQ));
   }, 'GOAWAY(FRAME_SIZE_ERROR)');
-  await both('PRIORITY depending on itself is dropped', undefined, true, (sock) => {
+  // The v20/22 bundle still enforces RFC 7540 5.3.1's self-dependency rule and ends the
+  // connection with PROTOCOL_ERROR where the v24+ bundle drops the frame (RFC 9218). Whether
+  // the answer escapes in front of that GOAWAY is write timing, not protocol (CONTRIBUTING §2,
+  // batching-dependent verdicts): in isolation node 22 suppresses the answer, under full-suite
+  // load it answers first and then resets -- both shapes measured off v22.21.1. The node arm
+  // accepts either; h2lean drops the frame on every version. Asserted apart, like stream 0 below.
+  const priSelf = (sock) => {
     sock.write(req(REQ));
     sock.write(pri(1, 1, 16));
-  }, 'ANSWERED', 350, 'GOAWAY(PROTOCOL_ERROR)');
+  };
+  const nodePriSelf = await once(nodeHttp2, undefined, true, priSelf);
+  assert.ok(nodePriSelf.verdict === 'ANSWERED' ||
+    nodePriSelf.verdict === 'GOAWAY(PROTOCOL_ERROR)' ||
+    nodePriSelf.verdict === 'ANSWERED GOAWAY(PROTOCOL_ERROR)',
+  `node: PRIORITY depending on itself -> ${nodePriSelf.verdict}`);
+  const h2PriSelf = await once(h2lean, undefined, true, priSelf);
+  assert.strictEqual(h2PriSelf.verdict, 'ANSWERED',
+    `h2lean: PRIORITY depending on itself -> ${h2PriSelf.verdict}, RFC 9218 drops it`);
   // node drops a PRIORITY on stream 0 silently -- the deviation h2spec http2/6.3 flags.
   // The v20/22 bundle instead ends the connection with INTERNAL_ERROR (measured); the
   // known deviation changes shape, it does not go away.
