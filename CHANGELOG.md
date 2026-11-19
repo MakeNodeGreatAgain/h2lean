@@ -3,6 +3,30 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [Unreleased]
+
+### Added
+
+- **A third client benchmark arm: `@passcod/faith`** (`bench/client/`), the
+  Rust/reqwest-backed fetch client, driven by the same nghttpd responder, slot
+  loop and cpuPerReq metric as the node:http2 and h2lean arms. Added to check
+  faith's README claim that it is faster than node:http2: on this matrix it is
+  3-8x slower per request, and two committed probes show why both results are
+  honest. `tools/probe-faith-tls.js` rules out the TLS asymmetry (all three
+  clients on the same TLS+ALPN nghttpd: TLS costs the JS arms ~11-14 µs/req at
+  16 KiB, faith stays ~4-5x above them). `tools/probe-faith-shape.js` replicates
+  faith's own bench — an IN-PROCESS node:http2 server judged by wall-clock rps,
+  not CPU — where faith does win on 64 KiB bodies (14.2k vs 7.1k req/s at c64)
+  by moving TLS/HPACK/framing onto Rust threads off the shared event loop,
+  while still paying more total CPU and losing at 1 KiB. The arm is a
+  whole-client comparison, not a shape-identical one: faith 1.1.0 has no h2c
+  prior knowledge, so its arm alone runs nghttpd with TLS+ALPN, one pooled
+  Agent per connection group replaces the pinned sockets, and a fetch +
+  body-reader loop replaces `sess.request()`. `tools/probe-faith.js` pins the
+  transport facts; the server certificate is a new serverAuth fixture pair,
+  because rustls rejects the existing test fixture's missing EKU extension.
+  The package is a devDependency only — the library never requires it.
+
 ## [0.4.1] - 2026-11-19
 
 ### Fixed

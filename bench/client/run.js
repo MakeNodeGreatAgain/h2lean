@@ -1,11 +1,11 @@
 // One client arm, one payload: start a dedicated nghttpd, run the load loop with
-// either node:http2 or h2lean as the ONLY difference, and print a single JSON
+// the arm's client library as the ONLY difference, and print a single JSON
 // result line for matrix.js to collect.
 //
 //   node bench/client/run.js --arm="h2lean client" --body=16384 --duration=6 --port=8970
 //
 // The server is nghttpd (nghttp2's own C server) serving a fixed static file, so
-// it is the same high-capacity responder for both arms and the bottleneck under
+// it is the same high-capacity responder for every arm and the bottleneck under
 // measurement is the client process. Windows are set to 4 MB (-w/-W 22, i.e.
 // 2**22-1) so a 256 kB response is not flow-control-throttled -- the same reason
 // the showcase gives h2load -w/-W 22. -m 1024 keeps the per-connection
@@ -15,6 +15,11 @@
 // answered 404 even to nghttp's own client on this host (the working recipe is in
 // test/client/client-roundtrip.test.js).
 //
+// The faith arm (arms.js documents the shape differences) gets nghttpd with
+// TLS+ALPN instead of --no-tls: faith 1.1.0 has no h2c prior knowledge, measured
+// by tools/probe-faith.js. Its server certificate is the serverAuth pair from
+// test/fixtures-tls.js -- rustls refuses the plain test fixture (no EKU).
+//
 // Metrics, per the repo's benchmark conventions:
 //   * req/s     -- requests COMPLETED inside a fixed measurement window. Slots
 //                  keep re-issuing until the cutoff and the window's count is
@@ -22,11 +27,12 @@
 //                  counted), so a faster arm never earns dead-slot idle time;
 //   * cpuPerReq -- process.cpuUsage() delta (user+system: the full cost of owning
 //                  the socket) over the window, read inside the client
-//                  process. This is the metric that travels; raw req/s moves
-//                  8-13% run-to-run on identical code.
-// Both arms get the identical worker shape: conn x streams persistent
-// connections, one in-flight request per slot, re-issued on response end, body
-// consumed (a server that never reads is not a benchmark, and neither is a
+//                  process. Process-wide means faith's Rust network threads are
+//                  counted too. This is the metric that travels; raw req/s
+//                  moves 8-13% run-to-run on identical code.
+// Every arm gets the identical worker shape: conn x streams persistent
+// connection groups, one in-flight request per slot, re-issued on response end,
+// body consumed (a server that never reads is not a benchmark, and neither is a
 // client that never reads -- the body bytes are what the decode path costs).
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -48,8 +54,10 @@ const body = Number(opt.body || 0);
 const duration = Number(opt.duration || 6);
 const port = Number(opt.port || 8970);
 const quiet = opt.verbose !== true && opt.verbose !== '1';
+const isFetch = arm.kind === 'fetch';
 
 const impl = arm.impl === 'h2lean' ? require('../../index') : require(arm.impl);
+const tlsPair = arm.tls ? require('../../test/fixtures-tls').serverAuth() : null;
 
 // Docroot: one static file, written fresh every spawn, served at /f/index.html.
 const dir = path.join(__dirname, 'dir');
@@ -76,7 +84,9 @@ function ready(cb) {
 }
 
 const srv = spawn('nghttpd',
-  ['--no-tls', '-m', '1024', '-n', '4', '-w', '22', '-W', '22', String(port), '.'],
+  (arm.tls ? [] : ['--no-tls']).concat(
+    ['-m', '1024', '-n', '4', '-w', '22', '-W', '22', String(port)],
+    arm.tls ? [tlsPair.keyPath, tlsPair.certPath] : ['.']),
   { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] });
 let srvErr = '';
 srv.stderr.on('data', (d) => {
@@ -86,9 +96,9 @@ srv.stderr.on('data', (d) => {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // One round-trip on one connection, resolving when the response body is fully
-// consumed. Identical call shape on both arms -- same method, same listener set,
-// same per-slot loop -- so differences in V8 inlining cannot be blamed on the
-// harness; they would be the library's own.
+// consumed. Identical call shape on the node:http2 and h2lean arms -- same
+// method, same listener set, same per-slot loop -- so differences in V8 inlining
+// cannot be blamed on the harness; they would be the library's own.
 function once(sess, headers, slot) {
   return new Promise((resolve, reject) => {
     let bytes = 0;
@@ -106,6 +116,34 @@ function once(sess, headers, slot) {
   });
 }
 
+// The fetch arm's round-trip: same slot contract (pending flag, resolve on full
+// body consumption, byte count), expressed as fetch() + a reader loop. The body
+// is read chunk by chunk and only its length kept, the way the 'data' listener
+// above does -- arrayBuffer() would add a whole-body copy the other arms skip.
+async function onceFetch(agent, url, slot) {
+  slot.pending = true;
+  try {
+    const res = await impl.fetch(url, { agent });
+    if (res.status !== 200) {
+      throw new Error('unexpected status ' + res.status);
+    }
+    let bytes = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      bytes += value.length;
+    }
+    slot.pending = false;
+    return bytes;
+  } catch (e) {
+    slot.pending = false;
+    throw e;
+  }
+}
+
 (async () => {
   const up = await new Promise((r) => ready(r));
   if (!up) {
@@ -114,10 +152,24 @@ function once(sess, headers, slot) {
   await wait(200);
 
   const headers = { ':method': 'GET', ':path': servedPath };
+  const origin = (arm.tls ? 'https://' : 'http://') + '127.0.0.1:' + port;
+  const round = isFetch ? onceFetch : once;
+  const target = isFetch ? origin + servedPath : headers;
   const slots = [];
   for (let c = 0; c < arm.conn; c++) {
-    const sess = impl.connect(`http://127.0.0.1:${port}`);
-    sess.on('error', () => {});
+    // One Agent per connection group: a warm faith Agent multiplexes its slots
+    // onto one pooled h2 connection (measured via agent.connections()), so the
+    // group count approximates the other arms' pinned socket count. Revocation
+    // checking is off: OneCRL/CRLite are background downloads none of the other
+    // arms pays, and the fixture CA is local anyway.
+    const sess = isFetch
+      ? new impl.Agent({
+        tls: { extraRoots: [tlsPair.cert], revocation: { onecrl: false, crlite: false } }
+      })
+      : impl.connect(origin);
+    if (!isFetch) {
+      sess.on('error', () => {});
+    }
     for (let i = 0; i < arm.streams; i++) {
       const slot = { sess, active: false, pending: false, done: 0, fail: 0 };
       slot.tick = async () => {
@@ -125,7 +177,7 @@ function once(sess, headers, slot) {
           return;
         }
         try {
-          await once(sess, headers, slot);
+          await round(sess, target, slot);
           slot.done++;
         } catch {
           slot.fail++; slot.active = false;
@@ -171,6 +223,7 @@ function once(sess, headers, slot) {
 
   const result = {
     arm: opt.arm, label: arm.label, impl: arm.impl, body,
+    transport: arm.tls ? 'h2-tls' : 'h2c',
     conn: arm.conn, streams: arm.streams, duration,
     n, fail, warm,
     rps: n / duration,
@@ -184,7 +237,11 @@ function once(sess, headers, slot) {
   }
   console.log('RESULT ' + JSON.stringify(result));
   for (const sess of new Set(slots.map((s) => s.sess))) {
-    sess.destroy();
+    if (isFetch) {
+      sess.close();
+    } else {
+      sess.destroy();
+    }
   }
   srv.kill();
   process.exit(0);

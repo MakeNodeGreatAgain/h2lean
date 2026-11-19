@@ -1,17 +1,21 @@
-// Paired client benchmark: the same request loop written against node:http2 and
-// against h2lean, both talking to the same nghttpd recipe, in ABBA-interleaved
-// rounds, aggregated by median. This is M3's measurement harness; the claim it
-// exists to support is "drop-in AND faster", and it is built to fail that claim
-// honestly:
+// Paired client benchmark: the same request loop written against node:http2,
+// against h2lean and against @passcod/faith, all talking to the same nghttpd
+// recipe, in order-reversed rounds, aggregated by median. This is M3's
+// measurement harness; the claim it exists to support is "drop-in AND faster",
+// and it is built to fail that claim honestly:
 //
-//   * ONE server shape (nghttpd, C, static file, 4 MB windows) for both arms, so
+//   * ONE server shape (nghttpd, C, static file, 4 MB windows) for every arm, so
 //     the only moving part is the client library in the measuring process;
-//   * rounds reverse arm order (ABBA) because the first arm of a pair
-//     systematically wins on this machine's conventions -- a saving only counts
-//     when the arms do NOT overlap;
+//   * rounds reverse arm order (ABBA with two arms, ABC/CBA with three) because
+//     the first arm of a pair systematically wins on this machine's conventions
+//     -- a saving only counts when the arms do NOT overlap;
 //   * cpuPerReq (user+system read inside the client) is the verdict metric;
 //     req/s is shown for scale. If the intra-arm spread exceeds the between-arm
 //     difference, the summary says INSIDE NOISE, not "faster".
+//
+// The faith arm is a whole-client comparison, not a codec comparison: it has no
+// h2c prior knowledge, so it alone runs over TLS+ALPN and its cpuPerReq includes
+// the TLS record protection the h2c arms never pay (arms.js has the full list).
 //
 //   node bench/client/matrix.js --rounds=3 --duration=6
 //   node bench/client/matrix.js --rounds=1 --duration=3   # quick smoke
@@ -62,7 +66,7 @@ for (const body of bodies) {
     const order = Object.keys(ARMS);
     if (r % 2 === 1) {
       order.reverse();
-    } // ABBA
+    } // ABBA (ABC/CBA with three arms)
     for (const armName of order) {
       const port = ++portCursor;
       process.stdout.write(`  [${body}B r${r + 1}/${rounds}] ${armName} ... `);
@@ -110,17 +114,23 @@ fs.writeFileSync(path.join(__dirname, '..', '..', 'out', 'client-raw.json'),
     rounds, duration, bodies, samples, agg
   }, null, 2));
 
-// Summary: the paired ratio per body, with the verdict gated on noise.
-console.log('\nbody        node us/req  h2lean us/req  cpu ratio (node/h2lean)  verdict');
+// Summary: the paired ratio per body and arm, with the verdict gated on noise.
+console.log('\nbody        arm              node us/req   arm us/req   cpu ratio (node/arm)  verdict');
 for (const n of bodies) {
   const base = agg[BASELINE][n];
-  const lite = agg['h2lean client'][n];
-  const ratio = base.cpu / lite.cpu;
-  const floor = Math.max(base.spread, lite.spread);
-  const verdict = ratio > 1 + floor / 100 ? 'h2lean faster (outside spread)'
-    : ratio < 1 - floor / 100 ? 'node faster (outside spread)'
-      : 'INSIDE NOISE';
-  console.log(`${String(n).padEnd(11)} ${fmt(base.cpu, 3).padStart(13)} ${fmt(lite.cpu, 3).padStart(14)}` +
-              `  ${fmt(ratio, 3).padStart(10)}x  (${fmt(base.spread, 1)}%/${fmt(lite.spread, 1)}% spread)  ${verdict}`);
+  for (const a of Object.keys(ARMS)) {
+    if (a === BASELINE) {
+      continue;
+    }
+    const alt = agg[a][n];
+    const ratio = base.cpu / alt.cpu;
+    const floor = Math.max(base.spread, alt.spread);
+    const verdict = ratio > 1 + floor / 100 ? a + ' faster (outside spread)'
+      : ratio < 1 - floor / 100 ? 'node faster (outside spread)'
+        : 'INSIDE NOISE';
+    console.log(`${String(n).padEnd(11)} ${a.padEnd(16)} ${fmt(base.cpu, 3).padStart(11)}` +
+                ` ${fmt(alt.cpu, 3).padStart(12)}  ${fmt(ratio, 3).padStart(10)}x` +
+                `  (${fmt(base.spread, 1)}%/${fmt(alt.spread, 1)}% spread)  ${verdict}`);
+  }
 }
 console.log('\nraw samples: out/client-raw.json');

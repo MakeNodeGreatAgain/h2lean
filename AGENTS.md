@@ -27,10 +27,11 @@ and the same handler code keeps working on a stack with no nghttp2 C inside it.
   `index.js`) must stay importable with nothing installed. Tests run on the built-in
   `node:test`. `devDependencies` are allowed, but only for out-of-band dev tooling the
   shipped library never requires — today `fast-xml-parser` (`tools/check-h2spec.js` reads
-  h2spec's JUnit report) and `uWebSockets.js` (a comparison arm in `bench/showcase/`,
-  never used by the library). Do not add a dependency to the runtime path to solve
-  something that is 30 lines of code. `lib/fast-timer.js` is a vendored byte-for-byte
-  copy of undici's and must stay exactly as it is upstream.
+  h2spec's JUnit report), `uWebSockets.js` (a comparison arm in `bench/showcase/`) and
+  `@passcod/faith` (a comparison arm in `bench/client/`), none used by the library. Do not
+  add a dependency to the runtime path to solve something that is 30 lines of code.
+  `lib/fast-timer.js` is a vendored byte-for-byte copy of undici's and must stay exactly
+  as it is upstream.
 * Measured against **node v26.12.1** (`engines: >=20`). Every "node does X" statement in
   this repository means that version unless the comment says otherwise.
 
