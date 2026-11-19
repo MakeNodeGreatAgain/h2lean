@@ -2,7 +2,7 @@
 //
 // Servers: h2c and h2s (prior-knowledge, ALPN 'h2'), the `stream` and compat
 // (`request`) APIs. Client: `connect()` + `session.request()` over h2c and h2s
-// (see lib/client.js); server push on the client stays notImplemented.
+// (see lib/client.js); server push (pushStream / PUSH_PROMISE) on both sides.
 // Deliberately reused from node:http2, because re-typing them would only create
 // drift: the 240 protocol constants and the `sensitiveHeaders` symbol. A peer
 // must see the same rstCode/goawayCode numbers as with node, and user code

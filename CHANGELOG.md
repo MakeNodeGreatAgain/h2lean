@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.4.0] - 2026-11-18
+
+### Added
+
+- **Client PUSH_PROMISE reception.** `connect()` now accepts server pushes by default
+  (`enablePush: true` in the client's local settings, matching node). The session emits
+  `'stream'` with `(pushedStream, requestHeaders, flags)` when a PUSH_PROMISE arrives;
+  the pushed stream emits `'push'` (not `'response'`) for its response headers. The
+  pushed stream's writable half is pre-ended (`writableFinished === true` at the event).
+  CONTINUATION-split promise blocks are reassembled. Destroying the pushed stream sends
+  `RST_STREAM(NO_ERROR)`; late frames for it are silently ignored. A PUSH_PROMISE
+  received with `enablePush: false` is `GOAWAY(PROTOCOL_ERROR)`, as node does.
+  Pinned by `test/client/client-push.test.js` (10 differential tests against node's
+  own server and cross-stack round trips).
+
 ## [0.3.0] - 2026-11-18
 
 ### Added
