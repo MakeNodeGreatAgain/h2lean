@@ -341,7 +341,7 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'WINDOW_UPDATE for a stream in the idle state ends the connection',
-    from: '      if (sid > this._maxInboundSid) {\n        this._fatal(PROTOCOL_ERROR, \'WINDOW_UPDATE on an idle stream\');',
+    from: '      if (sid > ((sid & 1) !== 0 ? this._maxInboundSid : this._nextPushSid - 2)) {\n        this._fatal(PROTOCOL_ERROR, \'WINDOW_UPDATE on an idle stream\');',
     to: '      if (false) {\n        this._fatal(PROTOCOL_ERROR, \'WINDOW_UPDATE on an idle stream\');'
   },
   {
@@ -353,7 +353,7 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'RST_STREAM for a stream in the idle state ends the connection',
-    from: '      if (sid > this._maxInboundSid) {\n        this._fatal(PROTOCOL_ERROR, \'RST_STREAM on an idle stream\');',
+    from: '      if (sid > ((sid & 1) !== 0 ? this._maxInboundSid : this._nextPushSid - 2)) {\n        this._fatal(PROTOCOL_ERROR, \'RST_STREAM on an idle stream\');',
     to: '      if (false) {\n        this._fatal(PROTOCOL_ERROR, \'RST_STREAM on an idle stream\');'
   },
   {
@@ -410,7 +410,7 @@ const anchors = [
     file: 'lib/session.js',
     what: 'DATA for a stream in the idle state -- sid 0, an even id, an id never opened -- is '
         + 'the PROTOCOL_ERROR it is named for',
-    from: '      if (sid === 0 || (sid & 1) === 0 || sid > this._maxInboundSid) {',
+    from: '      if (sid === 0 || ((sid & 1) === 0 && sid > this._nextPushSid - 2)\n        || ((sid & 1) !== 0 && sid > this._maxInboundSid)) {',
     to: '      if (false) {'
   },
   {
@@ -669,8 +669,8 @@ const anchors = [
   {
     file: 'lib/headers.js',
     what: 'a dynamic table size update is written in front of the block it announces',
-    from: '  const at = update === null ? 0 : update.length;',
-    to: '  const at = 0;'
+    from: '  const at = update === null ? 0 : update.length;\n  const end = encodeAt(parsed, enc, at);\n  if (at !== 0) {\n    update.copy(scratch, 0);\n  }\n  if (cacheable',
+    to: '  const at = 0;\n  const end = encodeAt(parsed, enc, at);\n  if (at !== 0) {\n    update.copy(scratch, 0);\n  }\n  if (cacheable'
   }
 ];
 

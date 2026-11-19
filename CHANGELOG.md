@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.3.0] - 2026-11-18
+
+### Added
+
+- **Server push: `stream.pushStream(headers, options, callback)` and `stream.pushAllowed`.**
+  The server can now promise resources to the client via PUSH_PROMISE (RFC 9113 6.6).
+  `pushAllowed` reflects the client's SETTINGS_ENABLE_PUSH; `pushStream` validates
+  request-style pseudo-headers, fills defaults from the parent request (`:method` GET,
+  `:authority`, `:scheme`, `:path` '/'), reserves sequential even stream ids, splits
+  oversized promise blocks into CONTINUATION, and delivers the pushed stream via
+  `callback(null, stream, headers, 0)` on the next tick. Synchronous throws:
+  `ERR_HTTP2_PUSH_DISABLED`, `ERR_HTTP2_NESTED_PUSH`. HEAD implies `endStream`.
+  The pushed stream's readable side is pre-ended (no request body); the application
+  answers it through the normal `respond()`/`write()`/`end()` path. Inbound
+  RST_STREAM/WINDOW_UPDATE on locally-pushed even ids are accepted; GOAWAY
+  last-stream-id is not moved by push. Pinned by `test/server-push.test.js`
+  (14 differential tests against node's own client).
+
 ## [0.2.6] - 2026-11-18
 
 ### Added
