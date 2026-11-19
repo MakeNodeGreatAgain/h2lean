@@ -217,3 +217,30 @@ test('destroying an open stream sends an RST_STREAM the server observes', async 
     await closeServer(srv);
   }
 });
+
+test('request(headers, null) throws synchronously on both stacks', async () => {
+  const { srv, port } = await startServer(echo);
+  try {
+    const verdict = (impl) => {
+      const sess = impl.connect(`http://127.0.0.1:${port}`);
+      sess.on('error', () => {});
+      let err = null;
+      try {
+        sess.request({ ':path': '/' }, null);
+      } catch (e) {
+        err = e;
+      }
+      sess.destroy();
+      return err;
+    };
+    const nodeErr = verdict(http2);
+    const liteErr = verdict(h2lean);
+    // node's assertIsObject(options) throws ERR_INVALID_ARG_TYPE; h2lean's endStream
+    // read off null throws a plain TypeError. The synchronous throw and its class are
+    // the shared contract -- the code and message differ, so they are not pinned.
+    assert.ok(nodeErr instanceof TypeError, 'node accepted null options');
+    assert.ok(liteErr instanceof TypeError, 'h2lean accepted null options');
+  } finally {
+    await closeServer(srv);
+  }
+});

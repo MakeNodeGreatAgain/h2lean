@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
-## [Unreleased]
+## [0.4.2] - 2026-11-19
 
 ### Added
 
@@ -26,6 +26,17 @@ All notable changes to this project are documented here. The format follows
   transport facts; the server certificate is a new serverAuth fixture pair,
   because rustls rejects the existing test fixture's missing EKU extension.
   The package is a devDependency only — the library never requires it.
+
+### Fixed
+
+- **`session.request(headers, null)` now throws a `TypeError`** where it used to be
+  silently accepted — the closer shape to node, whose `assertIsObject(options)` throws
+  `ERR_INVALID_ARG_TYPE` there (measured live; the code and message still differ).
+  The unread `{ ...options }` defensive copy is gone: node spreads options because it
+  validates and then mutates the copy for priority options, h2lean only reads
+  `endStream`, so the copy had no reader — one object allocation per request removed
+  (the speed effect measured inside noise, so no performance claim).
+  `test/client/client-session.test.js` pins the synchronous throw on both stacks.
 
 ## [0.4.1] - 2026-11-19
 
