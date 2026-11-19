@@ -3,6 +3,36 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.4.1] - 2026-11-19
+
+### Fixed
+
+- **Upstream push-test parity.** The portable push files of node's own suite
+  (`test-http2-*` with `pushStream` / `createPushResponse` / `captureRejections`, tag
+  v26.12.1) are ported to `test/upstream-push.test.js` — 16 tests, each run against both
+  stacks, h2lean and `node:http2` as the opposing peer. The fixes below are what the port
+  found.
+- **Compat `res.createPushResponse(headers, callback)`** — server push over the
+  `(req, res)` API, with node's order: callback validation, closed-response check,
+  `pushStream` with empty options (`test/upstream-push.test.js`).
+- **`captureRejections` routing for push** — with `EventEmitter.captureRejections` on, a
+  rejecting `'stream'` listener now destroys that stream (the pushed one for a push) and
+  every other rejecting event destroys the session, the way node's
+  `captureRejectionSymbol` handlers do; the server and client sessions both route it.
+- **Client `maxReservedRemoteStreams`** (default 200, like node): a PUSH_PROMISE that
+  would exceed the limit is answered `RST_STREAM(CANCEL)` on the promised id and the
+  stream is never emitted.
+- `remoteSettings.enablePush` / `enableConnectProtocol` are booleans, the way node's
+  `getUnpackedSettings` reports them (`value !== 0`, internal/http2/core.js:3786) — a
+  listener doing `settings.enablePush === false` now sees what node shows.
+- A client stream's `rstCode` is initialised to `0` (`NGHTTP2_NO_ERROR`, core.js:2152):
+  a stream closed without a reset now reports `0`, not `null`.
+- A rejection routed to a pushed stream whose two halves completed in the same turn no
+  longer loses its `'error'` event — node's push streams run `autoDestroy: false` so its
+  `destroy(err)` always reaches a live Duplex; h2lean's completion-driven auto-destroy
+  could swallow it (the upstream capture-rejection block-4 shape, measured against live
+  node).
+
 ## [0.4.0] - 2026-11-18
 
 ### Added

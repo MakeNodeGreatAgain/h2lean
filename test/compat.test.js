@@ -338,19 +338,35 @@ test('a peer reset reports "aborted" exactly while the response is still open', 
   }
 });
 
-test('createPushResponse reports that push is not implemented', async () => {
+test('createPushResponse pushes a compat response the client receives', async () => {
+  // node's shape (internal/http2/compat createPushResponse): the callback gets
+  // an Http2ServerResponse over the pushed stream; the full argument-validation
+  // and closed-stream cases are pinned by test/upstream-push.test.js.
   const srv = h2lean.createServer((req, res) => {
-    res.createPushResponse({ 'content-type': 'text/plain' }, (err) => {
-      assert.strictEqual(err.code, 'ERR_H2LEAN_NOT_IMPLEMENTED');
-      res.writeHead(200, { 'x-push': err.code });
-      res.end();
+    res.createPushResponse({ ':path': '/pushed' }, (err, push) => {
+      assert.ifError(err);
+      assert.strictEqual(push.stream.id % 2, 0);
+      push.end('pushed body');
+      res.writeHead(200, { 'x-push': 'ok' });
+      res.end('main body');
     });
   });
   const port = await new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve(srv.address().port)));
   const client = require('node:http2').connect(`http://127.0.0.1:${port}`);
   client.on('error', () => {});
+  const pushed = new Promise((resolve) => {
+    client.on('stream', (s, headers) => {
+      assert.strictEqual(headers[':path'], '/pushed');
+      let body = '';
+      s.setEncoding('utf8');
+      s.on('data', (c) => body += c);
+      s.on('end', () => resolve(body));
+    });
+  });
   const res = await request(client, GET);
+  assert.strictEqual(res.headers['x-push'], 'ok');
+  assert.strictEqual(res.body, 'main body');
+  assert.strictEqual(await pushed, 'pushed body');
   client.destroy();
   srv.close();
-  assert.strictEqual(res.headers['x-push'], 'ERR_H2LEAN_NOT_IMPLEMENTED');
 });

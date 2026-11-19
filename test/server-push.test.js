@@ -253,7 +253,12 @@ test('push promise headers default :method GET, :path /, :authority and :scheme 
 
 // ---- HEAD → endStream ------------------------------------------------------
 
-test('HEAD push ends the stream immediately (endStream implied)', async () => {
+test('HEAD push stays alive for respond(), which carries END_STREAM', async () => {
+  // node's measured shape (live node, wire-level):
+  // inside the callback the pushed stream is NOT closed and has no response
+  // yet; respond() then puts HEADERS/ES/EH on the wire and no DATA. The old
+  // h2lean auto-end closed the stream before the callback -- an invention, not
+  // parity; the upstream port (test/upstream-push.test.js) pins node's shape.
   const srv = h2lean.createServer();
   let closed = null;
   let headersSent = null;
@@ -262,22 +267,23 @@ test('HEAD push ends the stream immediately (endStream implied)', async () => {
       assert.ifError(err);
       closed = ps.closed;
       headersSent = ps.headersSent;
+      ps.respond();
     });
     stream.respond({ ':status': 200 });
     stream.end();
   });
   const port = await listen(srv);
   const client = connect(port);
-  client.on('stream', (s) => s.resume());
-  const req = client.request({ ':path': '/' });
-  req.resume();
-  await new Promise((r) => req.on('end', r));
-  await new Promise((r) => setTimeout(r, 50));
+  const t = await pushTranscript(client);
   client.destroy();
   await closeServer(srv);
 
-  assert.strictEqual(closed, true);
-  assert.strictEqual(headersSent, true);
+  assert.strictEqual(closed, false);
+  assert.strictEqual(headersSent, false);
+  assert.strictEqual(t.pushes.length, 1);
+  assert.strictEqual(t.pushes[0].events[0][0], 'push');
+  assert.strictEqual(t.pushes[0].events[0][1][':status'], 200);
+  assert.deepStrictEqual(t.pushes[0].events[1], ['end', '']);
 });
 
 // ---- multiple pushes -------------------------------------------------------
@@ -421,7 +427,10 @@ test('options.endStream closes the pushed stream without a body', async () => {
   srv.on('stream', (stream) => {
     stream.pushStream({ ':path': '/empty' }, { endStream: true }, (err, ps) => {
       assert.ifError(err);
-      assert.strictEqual(ps.closed, true);
+      // node keeps the stream alive here too (measured live): endStream ends
+      // the writable, the response still comes from respond(), with END_STREAM.
+      assert.strictEqual(ps.closed, false);
+      ps.respond({ ':status': 200 });
     });
     stream.respond({ ':status': 200 });
     stream.end();

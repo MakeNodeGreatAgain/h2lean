@@ -142,7 +142,7 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'a closing session with bytes still in flight is not finished yet',
-    from: '    if (this._liveStreams > 0 || this._outLen > 0 || this._frozenLen > 0) {\n      return;\n    }',
+    from: '    if (this._liveStreams > 0 || this._outLen > 0 || this._frozenLen > 0 || this._stageLen > 0) {\n      return;\n    }',
     to: ''
   },
   {
@@ -229,7 +229,7 @@ const anchors = [
   {
     file: 'lib/stream.js',
     what: 'the first write() starts an unstarted response, so HEADERS precede DATA',
-    from: "    if (!this.headersSent) {\n      this.respond({ ':status': 200 });\n    }",
+    from: "    if (!this.headersSent && !this._endQueued && this._state.localClose !== 1) {\n      this.respond({ ':status': 200 });\n    }",
     to: ''
   },
   {
@@ -388,7 +388,7 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'DATA after the peer\'s END_STREAM is the connection\'s error, not the stream\'s',
-    from: '    if (stream.state.remoteClose === 1) {',
+    from: '    if (stream._state.remoteClose === 1) {',
     to: '    if (false) {'
   },
   {
@@ -402,7 +402,7 @@ const anchors = [
   {
     file: 'lib/session.js',
     what: 'HEADERS after the peer\'s END_STREAM, whichever fields the block holds',
-    from: '    if (existing !== undefined ? existing.state.remoteClose === 1\n'
+    from: '    if (existing !== undefined ? existing._state.remoteClose === 1\n'
       + '      : (!this._isGone(sid) && this._ended.includes(sid))) {',
     to: '    if (false) {'
   },

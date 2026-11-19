@@ -234,12 +234,32 @@ h2lean terminates **untrusted bytes from the internet** and turns them into obje
   - **h2spec 146/146** — full RFC 9113/7541 conformance, same verdict as node's own HTTP/2 (`npm run spec`);
   - **mutation-tested guards** — every defensive limit is rewritten in place and proven to fail the suite ([tools/mutate-guards.js](./tools/mutate-guards.js)).
 
-## ⚠️ Not Implemented — Said Loudly
+## ⚠️ Known Divergences From node:http2 — Said Loudly
 
-Nothing is absent. The full `node:http2` surface is implemented: server (stream + compat),
-client (`connect`), `performServerHandshake`, and server push (`pushStream` / PUSH_PROMISE
-reception). Any future gap fails **loudly** with `ERR_H2LEAN_NOT_IMPLEMENTED` — never a
-silent wrong answer.
+The core surface is implemented: server (stream + compat), client (`connect`),
+`performServerHandshake`, and server push (`pushStream` / PUSH_PROMISE reception). The
+remaining gaps against the documented `node:http2` API are enumerated below — each was read
+out of node's docs and confirmed against the current tree (a `in`-probe over live objects).
+None silently returns a wrong answer: a missing method is `undefined`, so calling it throws
+`TypeError`, never a fabricated result.
+
+**Missing methods / properties** (the compat `(req, res)` request side is complete):
+
+- 🌊 **`ServerHttp2Stream` is not a `stream.Duplex`** — it is a bare `EventEmitter`, so `pipe()`, `read()`, `cork()/uncork()`, `setEncoding()` and the `readable*`/`writable*` getters are absent. Deliberate: a Duplex base costs ~1.4 µs/req of intrinsic machinery ([OPTIMIZATION.md](./OPTIMIZATION.md) item 41). `on('data'/'end')`, `pause/resume`, `write/end`, `setTimeout`, `priority`, `sendTrailers` all work.
+- 📄 **`stream.respondWithFD()` / `respondWithFile()`** and the newer **`stream.bufferSize`** — not implemented (nghttp2 `sendfile`-backed in node). Use `createReadStream()` + `stream.write()`; send-side backpressure already gates it.
+- 🔀 **`session.altsvc()` / `session.origin()`** — not implemented (ALTSVC / ORIGIN frames, RFC 7838 / 8336).
+- 🧰 **`ClientHttp2Stream`** inherits the Duplex surface but lacks the base-`Http2Stream` members: `close()`, `priority()`, `setTimeout()`, `sendTrailers()` and the getters `aborted`, `pending`, `state`, `sentTrailers`, `sentInfoHeaders`, `bufferSize`.
+- 📤 **`res.writeEarlyHints()`** (103 Early Hints) is not implemented (`res.writeInformation()` / `createPushResponse()` are); `Http2ServerResponse` is not an `http.ServerResponse`, so `res.cork()/uncork()` are absent (h2lean coalesces per turn already).
+- ⏱️ **`server.timeout`** getter is absent (`setTimeout()` is present).
+
+**Events not emitted:**
+
+- 🪤 **`'localSettings'`** (only `'remoteSettings'` fires); **`'tlsClientError'`** on a failed TLS handshake; **`'ready'`** on a stream; **`'altsvc'` / `'origin'`** on the client session (tied to the two methods above).
+
+**Behavioural differences** (full reasoning in the header comment of the affected file and [AGENTS.md](./AGENTS.md) §10):
+
+- 🎛️ **Options accepted but ignored:** `paddingStrategy` (no frame padding is produced), `maxSessionMemory` (no session-memory DoS accounting), `headerHintTimeout`/`headerHintSize` (no 1xx informational-flood guard).
+- 🚪 The **graceful-close predicate**, the **spurious `200` on `end()` with no body**, a **response queued in the same batch as a refusal**, the **`COMPRESSION_ERROR` vs `FRAME_SIZE_ERROR`** verdict, the **teardown event order**, and **`req.pause()/read()` not slowing the peer** (credit is window-bounded, not per-`read()`) differ from node — each pinned as a KNOWN DIVERGENCE in the test suite.
 
 ## 📚 Documentation
 
