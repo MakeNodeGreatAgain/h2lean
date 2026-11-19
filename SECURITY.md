@@ -150,8 +150,11 @@ Stated plainly so that nobody assumes coverage that does not exist:
   `probe-wire.js`, `probe-inbound-limits.js` and `probe-stream-teardown.js`) are the seed
   a fuzzer would start from; the frame-level tests are hand-written cases, not exhaustive
   input generation.
-* **No HTTP/2 client and no server push in v1**, so those code paths do not exist to be
-  vulnerable. `connect()` and push say so loudly rather than half-working.
+* **Server push is bounded by the same limits as any other stream.** A pushed stream
+  counts against the session's live-stream set, its DATA obeys flow control, and its
+  header block is decoded through the same HPACK decoder with the same `MAX_LITERAL` and
+  `maxHeaderListSize` bounds. A client that disables push (`enablePush: false`) answers
+  an unsolicited PUSH_PROMISE with `GOAWAY(PROTOCOL_ERROR)`, as node does.
 * **The client does not look at the value of a request header.** Node's client does not
   either, and both put a value carrying a CR on the wire (measured against a raw server,
   `out/probe-client-cr.js`), so such a value can split a field for a server behind the

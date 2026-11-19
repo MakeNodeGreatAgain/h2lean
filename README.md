@@ -236,9 +236,10 @@ h2lean terminates **untrusted bytes from the internet** and turns them into obje
 
 ## ⚠️ Not Implemented — Said Loudly
 
-One API is absent, and it fails **loudly** with `ERR_H2LEAN_NOT_IMPLEMENTED` — never a silent wrong answer:
-
-- **Server push** — removed from browsers in 2022 and considered obsolete; the safer replacement is [Early Hints (103)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/103).
+Nothing is absent. The full `node:http2` surface is implemented: server (stream + compat),
+client (`connect`), `performServerHandshake`, and server push (`pushStream` / PUSH_PROMISE
+reception). Any future gap fails **loudly** with `ERR_H2LEAN_NOT_IMPLEMENTED` — never a
+silent wrong answer.
 
 ## 📚 Documentation
 

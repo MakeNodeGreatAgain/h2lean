@@ -19,9 +19,10 @@ and the same handler code keeps working on a stack with no nghttp2 C inside it.
   supports both transports too — h2c over `net` and h2s over `tls.connect` with the same
   ALPN rules as node (pinned by `test/client/client-tls.test.js`). `performServerHandshake`
   is implemented — a server session over a socket the caller already holds, with no server
-  object (`test/server-handshake.test.js`). Server push is not implemented and not on the
-  table silently: it either is absent or throws `ERR_H2LEAN_NOT_IMPLEMENTED` — never a
-  silent wrong answer.
+  object (`test/server-handshake.test.js`). Server push is implemented on both sides:
+  `stream.pushStream()` / `stream.pushAllowed` on the server, PUSH_PROMISE reception with
+  session `'stream'` and pushed-stream `'push'` events on the client
+  (`test/server-push.test.js`, `test/client/client-push.test.js`).
 * **Zero runtime dependencies.** `package.json` has no `dependencies`; the library (`lib/`,
   `index.js`) must stay importable with nothing installed. Tests run on the built-in
   `node:test`. `devDependencies` are allowed, but only for out-of-band dev tooling the
