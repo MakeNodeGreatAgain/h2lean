@@ -48,6 +48,7 @@ const net = require('node:net');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
 const f = require('../../lib/frames');
+const { DEFERRED_REQUEST_ERROR } = require('../node-version');
 
 const PREFACE = 'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n';
 
@@ -294,10 +295,20 @@ async function afterCall(impl, call) {
     await new Promise((r) => setTimeout(r, 60));
     call(client);
     flags = `closed=${client.closed} destroyed=${client.destroyed}`;
-    const req = client.request({ ':path': '/after' });
-    req.on('error', (e) => late.push(`error ${e.code}`));
-    req.on('close', () => late.push(`close ${req.rstCode}`));
-    req.resume();
+    // node 20/22 throw the session-state error synchronously out of request(); 24+ (and
+    // h2lean on every version) accept the call and defer the error to the stream. Record
+    // the throw as a late line so the flags and wire stay differential across versions.
+    let req;
+    try {
+      req = client.request({ ':path': '/after' });
+    } catch (e) {
+      late.push(`threw ${e.code}`);
+    }
+    if (req !== undefined) {
+      req.on('error', (e) => late.push(`error ${e.code}`));
+      req.on('close', () => late.push(`close ${req.rstCode}`));
+      req.resume();
+    }
     await new Promise((r) => setTimeout(r, 150));
     // The peer teardown closes the socket, and a live request answers that with a
     // CANCEL -- after the exchange under test is over, and on a different turn per arm.
@@ -309,20 +320,28 @@ async function afterCall(impl, call) {
 }
 
 test('the closed flag belongs to close() alone', async () => {
+  // The sixth field is the code node 20/22 throw synchronously from the late request()
+  // (null where the call is accepted on every version); the fifth is the deferred late
+  // transcript node 24+ and h2lean report. Only that field is gated (test/node-version.js).
   const shapes = [
     ['goaway()', (c) => c.goaway(), 'closed=false destroyed=false',
-      ['HEADERS(1)', 'GOAWAY(0,0)', 'HEADERS(3)'], []],
+      ['HEADERS(1)', 'GOAWAY(0,0)', 'HEADERS(3)'], [], null],
     ['close()', (c) => c.close(), 'closed=true destroyed=false',
-      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_GOAWAY_SESSION']],
+      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_GOAWAY_SESSION'],
+      'ERR_HTTP2_GOAWAY_SESSION'],
     ['destroy()', (c) => c.destroy(), 'closed=false destroyed=true',
-      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_INVALID_SESSION']]
+      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_INVALID_SESSION'],
+      'ERR_HTTP2_INVALID_SESSION']
   ];
-  for (const [label, call, flags, wire, late] of shapes) {
+  for (const [label, call, flags, wire, late, threw] of shapes) {
+    const nodeLate = DEFERRED_REQUEST_ERROR || threw === null ? late : [`threw ${threw}`];
     const native = await afterCall(http2, call);
     assert.strictEqual(native.flags, flags, `node flags, ${label}`);
     assert.deepStrictEqual(native.wire, wire, `node wire, ${label}`);
-    assert.deepStrictEqual(native.late, late, `node late request, ${label}`);
+    assert.deepStrictEqual(native.late, nodeLate, `node late request, ${label}`);
     const ours = await afterCall(h2lean, call);
-    assert.deepStrictEqual(ours, native, label);
+    assert.strictEqual(ours.flags, flags, `h2lean flags, ${label}`);
+    assert.deepStrictEqual(ours.wire, wire, `h2lean wire, ${label}`);
+    assert.deepStrictEqual(ours.late, late, `h2lean late request, ${label}`);
   }
 });

@@ -60,6 +60,14 @@ const http2 = require('node:http2');
 const h2lean = require('../../index');
 const certificates = require('../fixtures-tls');
 const { listen, closeServer } = require('../diff-harness');
+const { DEFERRED_REQUEST_ERROR, ABORT_LISTENER_VISIBLE } = require('../node-version');
+
+// h2lean follows node 26: request() after destroy defers the session-state error to the
+// stream (20/22 throw synchronously, which crashes the unguarded probe below), and the
+// abort listener is registered enumerable (listenerCount 1; 20/22 report 0). Both are
+// node 24+ verdicts, so these cases skip below that floor (test/node-version.js).
+const SKIP_DEFERRED = DEFERRED_REQUEST_ERROR ? false : 'request() defers session-state errors only from node 24';
+const SKIP_LISTENERS = ABORT_LISTENER_VISIBLE ? false : 'addAbortListener enumerable only from node 24';
 
 const INVALID_SESSION = 'ERR_HTTP2_INVALID_SESSION/Error/The session has been destroyed';
 const STREAM_CANCEL = 'ERR_HTTP2_STREAM_CANCEL/Error/The pending stream has been canceled';
@@ -240,7 +248,7 @@ function beforeOps(lib) {
   });
 }
 
-test('upstream client-destroy: destroy before operations', async () => {
+test('upstream client-destroy: destroy before operations', { skip: SKIP_DEFERRED }, async () => {
   const native = await beforeOps(http2);
   const ours = await beforeOps(h2lean);
   assert.deepStrictEqual(native, BEFORE_OPS);
@@ -397,7 +405,7 @@ function requestSignal(lib, preaborted) {
   });
 }
 
-test('upstream client-destroy: a live request signal', async () => {
+test('upstream client-destroy: a live request signal', { skip: SKIP_LISTENERS }, async () => {
   const native = await requestSignal(http2, false);
   const ours = await requestSignal(h2lean, false);
   assert.deepStrictEqual(native, SIGNAL_LIVE);
@@ -459,14 +467,14 @@ function connectSignal(lib, secure) {
   }, secure);
 }
 
-test('upstream client-destroy: a session signal over h2c', async () => {
+test('upstream client-destroy: a session signal over h2c', { skip: SKIP_LISTENERS }, async () => {
   const native = await connectSignal(http2, false);
   const ours = await connectSignal(h2lean, false);
   assert.deepStrictEqual(native, CONNECT_SIGNAL);
   assert.deepStrictEqual(ours, native);
 });
 
-test('upstream client-destroy: a session signal over h2s', async () => {
+test('upstream client-destroy: a session signal over h2s', { skip: SKIP_LISTENERS }, async () => {
   const native = await connectSignal(http2, true);
   const ours = await connectSignal(h2lean, true);
   assert.deepStrictEqual(native, CONNECT_SIGNAL);
@@ -513,7 +521,7 @@ function serverAbort(lib) {
   });
 }
 
-test('upstream client-destroy: the server aborts the request signal', async () => {
+test('upstream client-destroy: the server aborts the request signal', { skip: SKIP_LISTENERS }, async () => {
   const native = await serverAbort(http2);
   const ours = await serverAbort(h2lean);
   assert.deepStrictEqual(native, SERVER_ABORT);

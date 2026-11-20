@@ -11,6 +11,11 @@ const assert = require('node:assert');
 const net = require('node:net');
 const nodeHttp2 = require('node:http2');
 const h2lean = require('../index');
+const { SOCKET_DESTROY_ROUTED } = require('./node-version');
+
+// h2lean routes socket.destroy beside setTimeout/ref/unref, the node 24+ shape; 20/22
+// list destroy among the throwing properties, so the probe's read would throw there.
+const SKIP = SOCKET_DESTROY_ROUTED ? false : 'socket.destroy routed only from node 24 (test/node-version.js)';
 
 const THROWING = ['write', 'end', 'pause', 'resume', 'read', 'emit',
   'setEncoding', 'setKeepAlive', 'setNoDelay'];
@@ -69,7 +74,7 @@ function sessionSurface(lib) {
   });
 }
 
-test('server session.socket proxy surface matches node', async () => {
+test('server session.socket proxy surface matches node', { skip: SKIP }, async () => {
   const fromNode = await sessionSurface(nodeHttp2);
   const fromH2lean = await sessionSurface(h2lean);
   assert.deepStrictEqual(fromH2lean, fromNode);
@@ -103,7 +108,7 @@ function clientSurface(lib) {
   });
 }
 
-test('client session.socket proxy surface matches node', async () => {
+test('client session.socket proxy surface matches node', { skip: SKIP }, async () => {
   const fromNode = await clientSurface(nodeHttp2);
   const fromH2lean = await clientSurface(h2lean);
   assert.deepStrictEqual(fromH2lean, fromNode);

@@ -53,6 +53,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
+const { INITIAL_WINDOW_CEILING_2_31 } = require('../node-version');
 
 const NAMES = {
   1: 'headerTableSize', 2: 'enablePush', 3: 'maxConcurrentStreams',
@@ -177,7 +178,12 @@ async function validationTranscript(impl) {
     attempt('null callback', () => client.settings({}, null));
     attempt('maxFrameSize too small', () => client.settings({ maxFrameSize: 100 }));
     attempt('maxFrameSize too large', () => client.settings({ maxFrameSize: 2 ** 24 }));
-    attempt('initialWindowSize too large', () => client.settings({ initialWindowSize: 2 ** 31 }));
+    // 2^31 is over the node 24+ ceiling (refused in JS); on 20/22 it passes JS validation,
+    // nghttp2 rejects it and Http2Settings::Send() CHECKs the submit, aborting the process.
+    // Omitted from both arms there so the suite survives (test/node-version.js).
+    if (INITIAL_WINDOW_CEILING_2_31) {
+      attempt('initialWindowSize too large', () => client.settings({ initialWindowSize: 2 ** 31 }));
+    }
     attempt('enablePush not boolean', () => client.settings({ enablePush: 1 }));
     attempt('enableConnectProtocol not boolean', () => client.settings({ enableConnectProtocol: 'yes' }));
     attempt('unknown key', () => client.settings({ nonsense: 5 }));

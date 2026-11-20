@@ -20,6 +20,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
+const { ORIGIN_SET_CAP } = require('../node-version');
+
+// The cap is a node 24+ feature; before that connect() ignores maxOriginSetSize and
+// onOrigin adds unconditionally, so the whole scenario has no reference verdict to pin.
+const SKIP = ORIGIN_SET_CAP ? false : 'maxOriginSetSize absent before node 24 (test/node-version.js)';
 
 const TLS_KEY = fs.readFileSync(path.join(__dirname, '..', '..', 'out', 'test-key.pem'));
 const TLS_CERT = fs.readFileSync(path.join(__dirname, '..', '..', 'out', 'test-cert.pem'));
@@ -96,7 +101,7 @@ const TOO_SMALL = [-0, 9, 1.5];
 const ABOVE_DEFAULT = [512, Infinity];
 
 test('upstream origin-set-max-size: a non-number option throws ERR_INVALID_ARG_TYPE',
-  async () => {
+  { skip: SKIP }, async () => {
     const { server, port } = await startFloodServer();
     try {
       for (const value of IMPOSSIBLE) {
@@ -112,7 +117,7 @@ test('upstream origin-set-max-size: a non-number option throws ERR_INVALID_ARG_T
     }
   });
 
-test('upstream origin-set-max-size: NaN and -1 throw ERR_OUT_OF_RANGE', async () => {
+test('upstream origin-set-max-size: NaN and -1 throw ERR_OUT_OF_RANGE', { skip: SKIP }, async () => {
   const { server, port } = await startFloodServer();
   try {
     for (const value of OUT_OF_RANGE) {
@@ -130,7 +135,7 @@ test('upstream origin-set-max-size: NaN and -1 throw ERR_OUT_OF_RANGE', async ()
 // A throw means no socket was ever made, which is what upstream asserts next with
 // `server.getConnections() === 0`. Measured on the live node server here, for both stacks.
 test('upstream origin-set-max-size: a rejected option leaves no connection behind',
-  async () => {
+  { skip: SKIP }, async () => {
     const { server, port } = await startFloodServer();
     try {
       for (const lib of [http2, h2lean]) {
@@ -150,7 +155,7 @@ test('upstream origin-set-max-size: a rejected option leaves no connection behin
   });
 
 test('upstream origin-set-max-size: the default 128 passes 12 frames and fails on the 13th',
-  async () => {
+  { skip: SKIP }, async () => {
     const { server, port } = await startFloodServer();
     try {
       const a = await floodArm(http2, port, undefined);
@@ -167,7 +172,7 @@ test('upstream origin-set-max-size: the default 128 passes 12 frames and fails o
     }
   });
 
-test('upstream origin-set-max-size: -0, 9 and 1.5 refuse the first frame', async () => {
+test('upstream origin-set-max-size: -0, 9 and 1.5 refuse the first frame', { skip: SKIP }, async () => {
   const { server, port } = await startFloodServer();
   try {
     for (const value of TOO_SMALL) {
@@ -185,7 +190,7 @@ test('upstream origin-set-max-size: -0, 9 and 1.5 refuse the first frame', async
 });
 
 test('upstream origin-set-max-size: 512 and Infinity accept well past the default',
-  async () => {
+  { skip: SKIP }, async () => {
     const { server, port } = await startFloodServer();
     try {
       for (const value of ABOVE_DEFAULT) {

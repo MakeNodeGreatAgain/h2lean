@@ -29,6 +29,7 @@ const http2 = require('node:http2');
 const h2lean = require('../../index');
 const certificates = require('../fixtures-tls');
 const { listen, closeServer } = require('../diff-harness');
+const { STREAM_HWM_64K } = require('../node-version');
 
 // node's measured transcript for the upstream scenario, so a change in either stack has
 // to be a decision rather than a drift. The body's chunk count is deliberately not
@@ -133,10 +134,15 @@ function arm(lib, n) {
 }
 
 test('upstream large-write-destroy: a 60000-octet write then destroy() is a clean reset', async () => {
+  // 60000 octets fit the 65536 highWaterMark (node 22+, and h2lean on every version) so
+  // write() returns true; node 20's 16384 mark reports false. Only the node-side line is
+  // gated -- h2lean's own transcript stays the 65536 one (test/node-version.js).
+  const nodeWant = STREAM_HWM_64K ? UPSTREAM
+    : UPSTREAM.map((l) => l === 'write-returned true' ? 'write-returned false' : l);
   const native = await arm(http2, 60000);
   const ours = await arm(h2lean, 60000);
-  assert.deepStrictEqual(native, UPSTREAM);
-  assert.deepStrictEqual(ours, native);
+  assert.deepStrictEqual(native, nodeWant);
+  assert.deepStrictEqual(ours, UPSTREAM);
 });
 
 test('a body over the send window goes out as far as the credit allows, then resets', async () => {

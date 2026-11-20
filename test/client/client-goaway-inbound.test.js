@@ -46,6 +46,15 @@ const net = require('node:net');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
 const f = require('../../lib/frames');
+const { DEFERRED_REQUEST_ERROR, NO_RST_ON_MULTI_DESTROY } = require('../node-version');
+
+// Only the late-request shape is version-divergent: node 24+ defers the session-state
+// error to the returned stream, 20/22 throw it synchronously out of request(). The wire,
+// events, state and per-stream rstCode agree on every version, so those stay differential
+// and only `late` is gated on the node arm; h2lean always reports the deferred shape.
+function nodeWant(want, threwCode) {
+  return DEFERRED_REQUEST_ERROR ? want : { ...want, late: [`threw ${threwCode}`] };
+}
 
 const PREFACE = 'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n';
 const SESSION_ERROR = 'ERR_HTTP2_SESSION_ERROR/Session closed with error code';
@@ -218,35 +227,39 @@ test('a non-zero inbound GOAWAY destroys the session and answers NO_ERROR', asyn
   for (const code of [1, 2, 7, 8]) {
     const want = destroyedTranscript(code, 1);
     const native = await transcript(http2, { code, last: 0, count: 1 });
-    assert.deepStrictEqual(native, want, `node, code ${code}`);
+    assert.deepStrictEqual(native, nodeWant(want, 'ERR_HTTP2_INVALID_SESSION'), `node, code ${code}`);
     const ours = await transcript(h2lean, { code, last: 0, count: 1 });
-    assert.deepStrictEqual(ours, native, `code ${code}`);
+    assert.deepStrictEqual(ours, want, `code ${code}`);
   }
 });
 
-test('no stream is reset, whatever the count and whatever lastStreamID said', async () => {
-  // lastStreamID is the NO_ERROR branch's business: on a non-zero code node destroys
-  // without consulting it, so a mark below, inside and above the open ids all give the
-  // same transcript. The absence of RST_STREAM is the point -- an application destroy
-  // resets all but the last open stream (client-destroy-goaway.test.js), this path
-  // resets none.
-  const shapes = [[1, 0], [2, 0], [3, 0], [3, 1], [3, 3], [3, 5]];
-  for (const [count, last] of shapes) {
-    const want = destroyedTranscript(2, count);
-    want.events[0] = `goaway 2 ${last} undefined`;
-    const opts = { code: 2, last, count };
-    const native = await transcript(http2, opts);
-    assert.deepStrictEqual(native, want, `node, ${count} streams last=${last}`);
-    const ours = await transcript(h2lean, opts);
-    assert.deepStrictEqual(ours, native, `${count} streams last=${last}`);
-  }
-});
+test('no stream is reset, whatever the count and whatever lastStreamID said',
+  { skip: NO_RST_ON_MULTI_DESTROY ? false : 'node 20/22 reset earlier streams on a multi-stream destroy (test/node-version.js)' },
+  async () => {
+    // lastStreamID is the NO_ERROR branch's business: on a non-zero code node destroys
+    // without consulting it, so a mark below, inside and above the open ids all give the
+    // same transcript. The absence of RST_STREAM is the point -- an application destroy
+    // resets all but the last open stream (client-destroy-goaway.test.js), this path
+    // resets none.
+    const shapes = [[1, 0], [2, 0], [3, 0], [3, 1], [3, 3], [3, 5]];
+    for (const [count, last] of shapes) {
+      const want = destroyedTranscript(2, count);
+      want.events[0] = `goaway 2 ${last} undefined`;
+      const opts = { code: 2, last, count };
+      const native = await transcript(http2, opts);
+      assert.deepStrictEqual(native, nodeWant(want, 'ERR_HTTP2_INVALID_SESSION'), `node, ${count} streams last=${last}`);
+      const ours = await transcript(h2lean, opts);
+      assert.deepStrictEqual(ours, want, `${count} streams last=${last}`);
+    }
+  });
 
 test('the debug tail arrives as a Buffer, and is undefined when there is none', async () => {
+  const want = destroyedTranscript(8, 1);
+  want.events[0] = 'goaway 8 0 bye';
   const withDebug = await transcript(http2, { code: 8, last: 0, count: 1, debug: 'bye' });
-  assert.strictEqual(withDebug.events[0], 'goaway 8 0 bye', 'node debug');
+  assert.deepStrictEqual(withDebug, nodeWant(want, 'ERR_HTTP2_INVALID_SESSION'), 'node debug');
   const ours = await transcript(h2lean, { code: 8, last: 0, count: 1, debug: 'bye' });
-  assert.deepStrictEqual(ours, withDebug, 'debug tail');
+  assert.deepStrictEqual(ours, want, 'debug tail');
   const without = await transcript(h2lean, { code: 8, last: 0, count: 1 });
   assert.strictEqual(without.events[0], 'goaway 8 0 undefined', 'no debug tail');
 });
@@ -266,7 +279,7 @@ test('a NO_ERROR GOAWAY that covers the open streams leaves them alive', async (
   };
   const opts = { code: 0, last: 5, count: 2 };
   const native = await transcript(http2, opts);
-  assert.deepStrictEqual(native, want, 'node');
+  assert.deepStrictEqual(native, nodeWant(want, 'ERR_HTTP2_GOAWAY_SESSION'), 'node');
   const ours = await transcript(h2lean, opts);
-  assert.deepStrictEqual(ours, native, 'NO_ERROR control');
+  assert.deepStrictEqual(ours, want, 'NO_ERROR control');
 });

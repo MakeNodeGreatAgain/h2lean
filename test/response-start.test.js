@@ -31,6 +31,7 @@ const { Decoder } = require('../lib/hpack');
 const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { closeServer } = require('./diff-harness');
+const { SAME_TURN_DESTROY_DISCARDS } = require('./node-version');
 
 // :method GET, :path /, :scheme http, :authority localhost -- sent WITHOUT END_STREAM, so the
 // request half stays open exactly the way an upload that the handler never reads does.
@@ -256,25 +257,30 @@ test('KNOWN DIVERGENCE: a response started and destroyed in the same turn still 
     // per-stream handle on. The last shape is the Duplex write queue rather than the
     // flush: the second write is still buffered when the destroy runs, so node submitted
     // nothing for it at all.
+    // The discard is a node 26 verdict: 20/22/24 send the queued HEADERS (measured off each
+    // binary, all three agree), so the node-side expectation is gated per version while
+    // h2lean's own wire stays fixed (test/node-version.js). Each shape carries both node
+    // wires -- the 26 one first, the pre-26 one second -- then h2lean's.
     const shapes = [
       ['write("")', (stream) => {
         stream.write(''); stream.destroy();
-      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
+      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
       ['respond()', (stream) => {
         stream.respond({ ':status': 200 }); stream.destroy();
-      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
+      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
       ['respond()+end()', (stream) => {
         stream.respond({ ':status': 200 }); stream.end(); stream.destroy();
-      }, 'RST(0)', 'HEADERS/EH{:status=200} DATA()/ES RST(0)'],
+      }, 'RST(0)', 'HEADERS/EH{:status=200} DATA()/ES RST(0)', 'HEADERS/EH{:status=200} DATA()/ES RST(0)'],
       ['respond()+end(body)', (stream) => {
         stream.respond({ ':status': 200 }); stream.end('body'); stream.destroy();
-      }, 'HEADERS/EH{:status=200} DATA(body) RST(0)',
+      }, 'HEADERS/EH{:status=200} DATA(body) RST(0)', 'HEADERS/EH{:status=200} DATA(body) RST(0)',
       'HEADERS/EH{:status=200} DATA(body)/ES RST(0)'],
       ['write("")+write(x)', (stream) => {
         stream.write(''); stream.write('x'); stream.destroy();
-      }, 'RST(0)', 'HEADERS/EH{:status=200} DATA(x) RST(0)']
+      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)', 'HEADERS/EH{:status=200} DATA(x) RST(0)']
     ];
-    for (const [label, app, nodeWire, oursWire] of shapes) {
+    for (const [label, app, nodeWire26, nodeWireOld, oursWire] of shapes) {
+      const nodeWire = SAME_TURN_DESTROY_DISCARDS ? nodeWire26 : nodeWireOld;
       const got = await both(app);
       assert.strictEqual(got[0].wire, nodeWire, `node, ${label}: ${got[0].wire}`);
       assert.strictEqual(got[0].state, '{"headersSent":true,"rst":0}', `node, ${label}`);

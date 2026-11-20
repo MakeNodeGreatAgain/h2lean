@@ -23,6 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http2 = require('node:http2');
 const h2lean = require('../index');
+const { ORIGIN_SET_CAP } = require('./node-version');
 
 const TLS_KEY = fs.readFileSync(path.join(__dirname, '..', 'out', 'test-key.pem'));
 const TLS_CERT = fs.readFileSync(path.join(__dirname, '..', 'out', 'test-cert.pem'));
@@ -291,6 +292,7 @@ function capProbe(lib, maxOriginSetSize, origins) {
 }
 
 test('client maxOriginSetSize=1 with two frames: node destroys ERR_HTTP2_TOO_MANY_ORIGINS',
+  { skip: ORIGIN_SET_CAP ? false : 'maxOriginSetSize absent before node 24 (test/node-version.js)' },
   async () => {
     const a = await capProbe(http2, 1, ['http://x1.example', 'http://x2.example']);
     const b = await capProbe(h2lean, 1, ['http://x1.example', 'http://x2.example']);

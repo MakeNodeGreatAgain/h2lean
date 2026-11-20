@@ -24,6 +24,16 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   minute later.
 * Expect the test count to grow; a change that reduces it needs a reason in the commit
   message.
+* **The suite is pinned to v26.12.1 but runs green on the engines floor (20) and up.** A
+  handful of verdicts changed between node 20 and 26; `test/node-version.js` exports
+  `NODE_MAJOR` and a named gate per measured boundary (six at >=24, the server stream
+  `writableHighWaterMark` at >=22, the same-turn respond+destroy HEADERS discard at >=26).
+  Where h2lean deliberately follows 26 and an older node differs, the gate either skips the
+  case (with the boundary as the skip reason) or gates only the node-side expectation while
+  h2lean's own stays fixed — never bend h2lean to an old verdict (AGENTS.md §1). Each
+  boundary was read off the 20.19.5 / 22.21.1 / 24.22.3 / 26.12.1 binaries' bundled
+  `internal/http2` source or a live probe, not recalled; adding a gate means measuring the
+  boundary on every affected major first (§3).
 * The suite is differential by design. Most files run the *same* application script
   against `node:http2` and against h2lean via `test/diff-harness.js` (`probe()`,
   `listen()`, `connect()`, `request()`) and compare what both sides recorded. When adding
