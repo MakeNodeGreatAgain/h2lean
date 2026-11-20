@@ -39,6 +39,15 @@ and the same handler code keeps working on a stack with no nghttp2 C inside it.
 
 * Code, comments and identifiers stay English, because the whole code base is English.
   Analysis is welcome as a preamble to the change, never as a substitute for it.
+* Confidentiality of the working environment. Nothing committed — code comments, commit
+  messages, test fixtures, tool output checked in — may reveal *where* or *by whom* the work
+  was done: no operating-system or hardware identifiers ("macOS", "Apple", a specific machine
+  or username, an absolute home path), no copy of a user's prompt or chat instruction, and no
+  development timestamps or relative-time narration ("today we found this is slow", "as of
+  Nov 2026", "we initially measured on …"). State knowledge as fact — the version measured
+  against, the RFC clause, the number and the case — not the calendar or the machine it came
+  from. The one exception is `CHANGELOG.md`, whose Keep-a-Changelog release dating is part of
+  its purpose; everything else carries no date and no host.
 * Two claims are never accepted here without proof:
   1. **"it is faster"** — worthless unless measured in one session against the paired
      `node:http2` arm (§7). Report the number, the noise and the case, or report nothing.
