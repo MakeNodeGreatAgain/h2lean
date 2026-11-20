@@ -1,6 +1,6 @@
 {
   "name": "h2lean",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Pure-JavaScript HTTP/2 for Node.js — a drop-in node:http2 replacement (server and client, h2c and TLS) with zero dependencies",
   "main": "index.js",
   "files": [
@@ -27,8 +27,8 @@
     "grpc"
   ],
   "scripts": {
-    "test": "node --test --test-timeout=120000 test/*.test.js && node --test --test-timeout=120000 test/client/*.test.js",
-    "test:server": "node --test --test-timeout=120000 test/*.test.js",
+    "test": "node --test --test-timeout=120000 test/*.test.js test/upstream/*.test.js && node --test --test-timeout=120000 test/client/*.test.js",
+    "test:server": "node --test --test-timeout=120000 test/*.test.js test/upstream/*.test.js",
     "test:client": "node --test --test-timeout=120000 test/client/*.test.js",
     "lint": "eslint .",
     "spec": "node tools/check-h2spec.js",

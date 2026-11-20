@@ -9,11 +9,11 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
 ## 1. Running and extending the test suite
 
 * `npm test` = server suite + client suite
-  (`node --test --test-timeout=120000 test/*.test.js && node --test --test-timeout=120000
-  test/client/*.test.js`). The client suite is passed as an unquoted glob, not as the
+  (`node --test --test-timeout=120000 test/*.test.js test/upstream/*.test.js &&
+  node --test --test-timeout=120000
+  test/client/*.test.js`). Both suites are passed as unquoted globs, not as a
   directory: node 22's runner fails a directory argument with MODULE_NOT_FOUND while
-  node 20's does not expand runner-side globs, so the shell has to do it (the server
-  suite was already a glob).
+  node 20's does not expand runner-side globs, so the shell has to do it.
   **The timeout is load-bearing**: without it, a test waiting for a response that a newly
   added correct refusal never sends hangs the whole suite silently instead of failing.
   Keep it when invoking `node --test` by hand (the local convention is
@@ -39,6 +39,11 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   internals, and some pin behaviour that has since changed. Re-express each scenario as a
   differential case and verify the expected value against the running v26.12.1 binary first
   (AGENTS.md §3) — a node test is a hint about what to measure, never the measurement itself.
+* Ports of node's own tests live in `test/upstream/`, one file per upstream
+  `test-http2-*.js` (`test/upstream/<slug>.test.js`). The header comment of each file names
+  the upstream source it ports, so a reader can diff the scenario against the original.
+  Everything else in `test/` is written for h2lean's own behaviour and does not belong
+  there. `npm test` runs the folder as part of the server suite.
 * A late `'error'` event on a stream after the test body finished fails the file silently.
   Stress tests must destroy their clients and clear their timers.
 
@@ -437,3 +442,18 @@ the decision, the measurements and the pins. None of them is a to-do list.
 * `req.pause()`/`req.read()` do not slow the peer down: stream credit is released as the
   buffered body is consumed and connection credit in half-window steps, not per `read()`.
   Documented in `lib/compat.js`; closing it would need partial credit accounting.
+* **Which guard refuses a second `sendTrailers()` in the turn of the first.** node's
+  `sendTrailers()` records the block and hands the bytes to
+  `setImmediate(finishSendTrailers)` — "Send the trailers in setImmediate so we don't do it
+  on nghttp2 stack" (`internal/http2/core.js`) — so inside the turn of the call the stream is
+  still neither destroyed nor closed and a second call reaches the
+  `ERR_HTTP2_TRAILERS_ALREADY_SENT` guard. h2lean frames the trailer inside the call, which
+  ends the local half and closes the stream in that same turn, so the second call meets the
+  destroyed guard first and answers `ERR_HTTP2_INVALID_STREAM`. Both stacks refuse the call,
+  and the case an application actually reaches for — a call after `'close'`, with or without
+  trailers sent — reports `ERR_HTTP2_INVALID_STREAM` on both; only the name of this
+  second-call-in-one-turn differs. Closing the gap costs either one TickObject on every
+  trailer-bearing response (node's compat layer asks for trailers on *every* response, so
+  that is every compat response) or a reordering of node's own guards, which then gets the
+  after-`'close'` case wrong. Pinned as two explicit expectations in
+  `test/upstream/trailers.test.js` rather than folded into a general tolerance.

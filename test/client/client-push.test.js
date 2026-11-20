@@ -38,10 +38,14 @@ function pushServer(impl, pushPath, pushBody) {
 // Collect the push transcript through a client implementation.
 function pushTranscript(client, reqPath) {
   return new Promise((resolve, reject) => {
-    const t = { sessionStream: null, push: null, data: '', ended: false, rstCode: null };
+    const t = { sessionStream: null, push: null, data: '', ended: false, rstCode: null,
+      pushedSentHeaders: null, reqSentKeys: null };
     const timer = setTimeout(() => reject(new Error('push transcript timeout')), 5000);
     client.on('stream', (pushed, headers, flags) => {
       t.sessionStream = { id: pushed.id, headers, flags, writableFinished: pushed.writableFinished };
+      // A pushed stream was never given a request map, so node's sentHeaders getter has
+      // nothing to fold and answers undefined (core.js:2226, measured on a live client).
+      t.pushedSentHeaders = pushed.sentHeaders === undefined ? 'undefined' : 'object';
       pushed.on('push', (h) => {
         t.push = h;
       });
@@ -65,6 +69,7 @@ function pushTranscript(client, reqPath) {
       clearTimeout(timer); reject(e);
     });
     const req = client.request({ ':path': reqPath || '/' });
+    t.reqSentKeys = Object.keys(req.sentHeaders).join(',');
     req.on('error', () => {});
     req.resume();
   });
@@ -99,6 +104,9 @@ test('node server push: h2lean client matches node client transcript', async () 
     assert.strictEqual(leanT.ended, true);
     assert.strictEqual(leanT.rstCode, 0);
     assert.strictEqual(leanT.responseUnexpected, undefined);
+    assert.strictEqual(leanT.pushedSentHeaders, nodeT.pushedSentHeaders);
+    assert.strictEqual(nodeT.pushedSentHeaders, 'undefined');
+    assert.strictEqual(leanT.reqSentKeys, nodeT.reqSentKeys);
   } finally {
     await closeServer(srv);
   }

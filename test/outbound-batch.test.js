@@ -148,12 +148,12 @@ test('a peer with a large window cannot grow the outbound queue past the cap', a
   // (b) of the two conditions: the bytes are on their way, but the queue is not ours
   // again for 60 ms, so everything produced meanwhile has somewhere to go. Only the
   // write that carries a callback is held: a batch is written corked, chunk by chunk.
-  const realWrite = session.socket.write.bind(session.socket);
-  session.socket.write = (buf, cb) => (cb === undefined
+  const realWrite = session._socket.write.bind(session._socket);
+  session._socket.write = (buf, cb) => (cb === undefined
     ? realWrite(buf)
     : realWrite(buf, () => setTimeout(cb, 60)));
   t.after(() => {
-    session.socket.write = realWrite;
+    session._socket.write = realWrite;
   });
 
   // (a): credit for the connection keeps arriving while that write is outstanding.

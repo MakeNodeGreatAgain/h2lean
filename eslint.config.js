@@ -16,6 +16,8 @@ module.exports = [
                 __filename: 'readonly',
                 console: 'readonly',
                 URL: 'readonly',
+                AbortController: 'readonly',
+                AbortSignal: 'readonly',
                 queueMicrotask: 'readonly',
                 setImmediate: 'readonly',
                 clearImmediate: 'readonly',

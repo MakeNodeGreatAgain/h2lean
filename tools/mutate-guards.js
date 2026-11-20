@@ -129,7 +129,7 @@ const anchors = [
     // h2lean destroys instead, and that difference is AGENTS.md section 10's open problem, not a
     // test.
     what: 'a drained closing session lets the connection go (the peer sees a FIN)',
-    from: '    this.socket.end();\n    this.destroy(NO_ERROR);',
+    from: '    this._socket.end();\n    this.destroy(NO_ERROR);',
     to: '    this.destroy(NO_ERROR);'
   },
   {
@@ -518,13 +518,13 @@ const anchors = [
   {
     file: 'lib/client-session.js',
     what: 'a credit release with nothing queued goes straight to the socket, not into the queue',
-    from: '      if (this._writing && this._open && this._started && this._outLen === 0\n        && this.socket.writable) {',
+    from: '      if (this._writing && this._open && this._started && this._outLen === 0\n        && this._socket.writable) {',
     to: '      if (false) {'
   },
   {
     file: 'lib/client-session.js',
     what: 'a credit release never overtakes frames that are still queued',
-    from: '      if (this._writing && this._open && this._started && this._outLen === 0\n        && this.socket.writable) {',
+    from: '      if (this._writing && this._open && this._started && this._outLen === 0\n        && this._socket.writable) {',
     to: '      if (this._wuLen !== 0) {'
   },
   {

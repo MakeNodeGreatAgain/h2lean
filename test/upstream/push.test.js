@@ -34,7 +34,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const events = require('node:events');
 const nodeHttp2 = require('node:http2');
-const h2lean = require('../index');
+const h2lean = require('../../index');
 
 function listen(server) {
   return new Promise((resolve, reject) => {

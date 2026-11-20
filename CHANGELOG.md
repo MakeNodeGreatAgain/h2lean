@@ -3,7 +3,296 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-20
+
+### Added
+
+- **`options.signal` and `options.waitForTrailers` on `client.request()`** (TODO 4.3).
+  A `ClientHttp2Session.request()` call now accepts `options.signal`: the signal's
+  `abort` listener destroys the stream with node's `AbortError` shape (`name`
+  `'AbortError'`, `code` `'ABORT_ERR'`, message `'The operation was aborted'`,
+  `cause` = `signal.reason`), a non-`AbortSignal` throws `ERR_INVALID_ARG_TYPE`
+  synchronously, and an already-aborted signal destroys the stream before any
+  frame goes out. The listener is disposed on the stream's `'close'`. Signal
+  handling lives on the client request path only, exactly as in node's
+  `internal/http2/core.js` -- `stream.respond()` and the compat server API do
+  not read a signal on either stack. `waitForTrailers` mirrors node's
+  `STREAM_FLAGS_HAS_TRAILERS`: the last DATA leaves without `END_STREAM`,
+  `'wantTrailers'` fires before the Duplex `'finish'`, and `stream.sendTrailers()`
+  then puts the trailer block on the wire with `END_STREAM` (a block with no fields in
+  it sends no header section at all -- see Changed). Calling
+  `sendTrailers()` on a stream that was not opened with `waitForTrailers`
+  throws `ERR_HTTP2_TRAILERS_NOT_READY`. `test/abort-waitfortrailers.test.js`
+  pins every case differentially against `node:http2`.
+- **ORIGIN (RFC 8336) and ALTSVC (RFC 7807), both directions** (TODO 4.2). A server
+  session now exposes `session.altsvc(alt, originOrStream)` and `session.origin(...origins)`,
+  mirroring node's `ServerHttp2Session` methods and their argument validation exactly (same
+  `ERR_HTTP2_ALTSVC_INVALID_ORIGIN`, `ERR_HTTP2_ALTSVC_LENGTH`, `ERR_HTTP2_ORIGIN_LENGTH`,
+  `ERR_INVALID_URL`, `ERR_OUT_OF_RANGE` codes; same `kQuotedString` character check on `alt`;
+  same 16382-byte budget). A session built with `createServer({origins: [...]})` auto-sends
+  one ORIGIN frame at connect, the way core.js `setupHandle` does. Both stacks now also
+  parse inbound ALTSVC (frame type 10) and ORIGIN (frame type 12) and emit the client
+  `'altsvc'` (`alt, origin, streamId`) and `'origin'` (array) events; a malformed payload
+  on either is discarded rather than fatal, as measured on live node. `session.originSet`
+  is now a real getter (core.js's `ArrayFrom(initOriginSet(this))`): the TLS seed origin
+  (from `socket.servername` or `socket.remoteAddress`, bracketed on IPv6, plus
+  `:${socket.remotePort}`, run through `getURLOrigin`), plus every origin a peer asserted
+  via ORIGIN. Over h2c it reads `undefined`, matching node's TLS gate. A client session
+  accepts `options.maxOriginSetSize` (node default 128, min 0); an inbound ORIGIN that
+  would overflow it destroys the session with `ERR_HTTP2_TOO_MANY_ORIGINS`. Node's C++
+  `CHECK`-abort on `altsvc(alt)` with neither an origin nor a stream id cannot be reproduced
+  in pure JS; h2lean throws `ERR_HTTP2_ALTSVC_INVALID_ORIGIN` for that one degenerate call
+  instead (documented in `lib/session.js` beside `checkAltSvc`). `test/altsvc-origin.test.js`
+  pins every case differentially against `node:http2`.
+- **`session.socket` now returns node's safe socket Proxy** (TODO 4.1). Both the
+  server `Http2Session` and the client `ClientHttp2Session` expose a public
+  `socket` that is a `Proxy` over the session, as `node:http2` does: `setTimeout`,
+  `ref`, `unref` and `destroy` are re-bound to the session, the raw-socket mutation
+  accessors (`write`, `end`, `pause`, `read`, `resume`, `emit`, `setEncoding`,
+  `setKeepAlive`, `setNoDelay`) throw `ERR_HTTP2_NO_SOCKET_MANIPULATION` on access,
+  and every other property falls through to the underlying `net`/`tls` socket, so
+  `session.socket instanceof net.Socket` holds and reads like `remoteAddress`
+  work. The proxy is built lazily and dropped (reads `undefined`) once the session
+  has closed, matching node's `cleanupSession`. `test/socket-proxy.test.js` pins
+  the surface differentially against `node:http2`. Drop-in code that reached for
+  `session.socket` (previously absent) now finds node's object.
+
+### Changed
+
+- **`sentHeaders` / `sentTrailers` report the message that went out, not the object the
+  application passed.** `respond()` used to store the caller's own map (or the `{}` it
+  normalizes no argument to), and a client stream's `sentHeaders` was `null`. Both are now
+  node's snapshots, read out of `internal/http2/core.js` (`prepareResponseHeadersObject`,
+  the memoized getter at :2225, `sendTrailers`) and `internal/http2/util.js`
+  (`prepareRequestHeadersObject` / `prepareRequestHeadersArray`) and measured off a live
+  node server and client in one session: a null-prototype map that keeps the caller's key
+  spelling and order, `':status'` as the coerced **number** (`'201'` reads back `201`, no
+  status reads back `200`), the generated `date` last (absent with `sendDate: false` or
+  when the application supplied its own), a repeated name in the flat-array form folded
+  into an array of values, and the pseudo-headers `request()` resolved -- appended in the
+  order `:method`, `:authority`, `:scheme`, `:path` for an object, prepended in that order
+  for an array. A pushed client stream's `sentHeaders` is `undefined` (there is no request
+  map to fold), a pushed server stream's is the resolved request map, and `sentTrailers`
+  is a null-prototype copy on both sides, `undefined` until a block is sent. The views are
+  built on the first read and kept, so the encode path allocates nothing extra and the
+  frozen-identity HPACK block cache is untouched; the caller's object is never mutated.
+  The client's informational `'headers'` event also carries the raw
+  HEADERS frame flags as its second argument, the way node's
+  `emit(stream, event, obj, flags, headers)` does. Pinned by
+  `test/upstream/sent-headers.test.js` (a port of `test-http2-sent-headers.js`) and
+  `test/client/client-push.test.js`.
+
+- **Trailer semantics follow node, on the stream API and on the compat API.** Four rules
+  were read out of `internal/http2/core.js` and `internal/http2/compat.js` in one session
+  and measured off a live `node:http2` server frame by frame:
+  * An **empty** trailer block puts no HEADERS on the wire. The END_STREAM the body
+    withheld rides on a zero-length DATA instead (node's compat plain answer:
+    `HEADERS/EH, DATA len4 flags 0x0, DATA len0 flags 0x1`; h2lean sent
+    `HEADERS flags=0x5 len=0` there, a trailing header section with no fields in it).
+  * The compat answer asks for trailers on every response -- `kBeginSend` passes
+    `waitForTrailers: true` -- and answers the `'wantTrailers'` callback with the
+    response's trailer map. `res.end()` is now node's `stream.end()` and nothing else;
+    the block is sent from the callback, so an application that called `addTrailers()`
+    still gets its fields after the body and one that did not gets no header section.
+  * `stream.sendTrailers()` is node's three synchronous throws in node's order --
+    `ERR_HTTP2_INVALID_STREAM`, then `ERR_HTTP2_TRAILERS_ALREADY_SENT`, then
+    `ERR_HTTP2_TRAILERS_NOT_READY` -- where the permission to call it comes from the
+    `'wantTrailers'` callback (`state.trailersReady`), not from the `waitForTrailers`
+    option. A call that arrived before the callback used to emit a stream `'error'`.
+  * A stream that still owes a trailer block is not finished: `localClose` no longer lets
+    the peer's END_STREAM close it. Without that, a compat answer with no body against an
+    unread request put HEADERS on the wire and nothing after it, and the client waited for
+    an END_STREAM that never came.
+  KNOWN DIVERGENCE, one error name: a second `sendTrailers()` in the same turn as the
+  first reports `ERR_HTTP2_TRAILERS_ALREADY_SENT` on node and `ERR_HTTP2_INVALID_STREAM`
+  here, because node defers the trailer submit to a `setImmediate` while h2lean frames it
+  in the call. AGENTS.md §10 / CONTRIBUTING.md §5. Pinned by
+  `test/upstream/trailers.test.js` (ports of `test-http2-trailers.js` and
+  `test-http2-no-wanttrailers-listener.js`), which compares the whole transcript.
+
+### Fixed
+
+- **A client stream reset by the peer now tears down the way node's does.** Three things
+  were missing, all in `onStreamClose` / `closeStream` / `_destroy`
+  (`internal/http2/core.js`). A `RST_STREAM(NO_ERROR)` is a clean end, not a discard: node
+  pushes null and defers the destroy to `'end'` ("Preserve buffered reads after a clean
+  reset"), so the buffered body is delivered and `'end'` fires before `'close'` with
+  `rstCode` 0 — h2lean destroyed at once and never reported `'end'`. A reset that finds the
+  request body still open emits `'aborted'` and ends the writable half, so `'finish'` fires
+  and `writableEnded` is true; h2lean reported neither and left `writableEnded` false.
+  And `_destroy` pushes null unconditionally, which is why `CANCEL` (8) also reaches
+  `'end'` while an error code does not — `destroy(err)` skips `'end'`, `destroy()` does not.
+  The client stream now carries node's `aborted` flag, and `_pump` settles the writable
+  half of a reset stream without framing: nghttp2 refuses DATA and HEADERS on a closed
+  stream, where h2lean put an `END_STREAM` on the wire for a stream the peer had already
+  reset. Measured on v26.12.1 against a raw peer over the nine reachable combinations of
+  code (0, 1, 8), `END_STREAM` ahead of the reset or not, and the request body ended or
+  not: every transcript now matches, event order included. The unread-body case is a wait
+  on both stacks — no `'end'` and no `'close'` until the body is consumed — and is pinned
+  as one. Pinned by `test/client/client-rst.test.js` and by
+  `test/upstream/large-write-destroy.test.js`, a port of node's
+  `test-http2-large-write-destroy.js` (a 60000-octet write then `destroy()`, against a
+  content-length promise of 120000): the wire was already identical on both arms —
+  HEADERS, four DATA frames, `RST_STREAM(0)` — and only the client's reading of it
+  differed. A body over the send window is pinned beside it: `write()` reports
+  backpressure and 65535 octets reach the client before the reset ends the message.
+  One divergence is written down rather than closed: a stream leaves the client session's
+  map at `END_STREAM`, where node keeps it until the Duplex is destroyed, so a reset
+  arriving after a completed response never reaches a stream whose body was never ended
+  or whose response is still buffered unread — node reports `aborted`/`finish`/`close`,
+  h2lean waits. Recorded in `lib/client-session.js` and excluded from the new test.
+
+- **An outbound header block over the session's `maxSendHeaderBlockLength` is now refused,
+  the way nghttp2 refuses it.** h2lean put any block on the wire however large; node
+  compares an *estimate* against a per-session bound at frame-prep time
+  (`nghttp2_hd_deflate_bound` = `12 + 12*fields + Σ(name.length + value.length)`, plus
+  `NGHTTP2_PRIORITY_SPECLEN` = 5 for HEADERS and 0 for PUSH_PROMISE, against
+  `NGHTTP2_MAX_HEADERSLEN` = 65536 by default). The estimate counts JS string lengths, not
+  UTF-8 octets — measured on v26.12.1, values of `é` (2 octets/char) and `€` (3) fall on the
+  same line as `X`. For `{'test-trailer': 'X'.repeat(n)}` the estimate is `41 + n`: under
+  `maxSendHeaderBlockLength: 200`, n=159 is served and n=160 refused; under the default,
+  n=65495 is served and n=65496 refused. The option is taken on a `typeof === 'number'` test
+  with no range check and coerced to uint32 (`updateOptionsBuffer`,
+  `internal/http2/util.js`) — measured, 200.9 bounds like 200 and -1 like 4294967295.
+  The refusal is not a throw: `respond()`, `sendTrailers()` and `additionalHeaders()` return
+  normally, the stream emits `frameError(1, 6, sid)`, and a turn later it closes with
+  `ERR_HTTP2_STREAM_ERROR` / `Stream closed with error code NGHTTP2_FRAME_SIZE_ERROR` and
+  `rstCode` 6 while the session closes behind it (node's `onFrameError`). A refused
+  *response* block also stops the body: nghttp2's response-DATA predicate requires a stream
+  opened by a sent response HEADERS, so `end('hello')` puts no DATA out either. A refused
+  *informational* block stops nothing — the final response still goes out and the stream
+  closes with `rstCode` 0. The estimate is compared when the block is framed, so a trailer
+  block stashed behind a body that did not fit the send window is refused when the queue
+  drains — measured, the same transcript with a 200 000-octet body ahead of the 64 KiB
+  trailer, and no `'end'` on the client because the `END_STREAM` the trailers carried never
+  went out. One divergence is written down rather than closed: with no reader
+  on the request half, node's unread-request auto-close reaches the stream before the
+  deferred error close and reports 0 where h2lean reports 6, because the two schedule the
+  same pair in opposite orders. Pinned by
+  `test/upstream/exceeds-server-trailer-size.test.js`, a port of node's
+  `test-http2-exceeds-server-trailer-size.js` with both sides of the bound, the multi-byte
+  values and the option coercion asserted against node's measured transcript first.
+
+- **The same outbound bound now applies to a client's request and trailer blocks and to a
+  server's `PUSH_PROMISE`.** `connect()` accepts `maxSendHeaderBlockLength` (it was read on
+  the server only, and silently ignored on the client), with the same `typeof === 'number'`
+  gate and uint32 coercion. The estimate is accumulated in the pass that already sizes the
+  encoder scratch and carried in the request-block cache, so a cached block is bounded like
+  a fresh one. Which stream closes on the refusal is nghttp2's prep-error path, and it
+  differs per frame kind — all three measured on v26.12.1:
+  - a **request HEADERS** opens the stream, so nghttp2 closes it itself with
+    `NGHTTP2_REFUSED_STREAM`: `frameError(1, 6, sid)`, `ERR_HTTP2_STREAM_ERROR` naming
+    `NGHTTP2_REFUSED_STREAM`, `rstCode` **7**, session close, and **nothing on the wire** —
+    the server sees no stream at all. For a request with a pinned one-character
+    `:authority` the estimate is `120 + n`; under a bound of 200, n=80 is served and n=81
+    refused.
+  - a **client trailer HEADERS** is submitted on a stream that is already open, so nghttp2
+    closes nothing and node's deferred `close(6)` lands: `rstCode` **6**, and
+    `RST_STREAM(6)` does go out — the peer reports `ERR_HTTP2_STREAM_ERROR` / 6. One field
+    `'x-big'` gives `34 + n`; under a bound of 150, n=116 is served and n=117 refused.
+  - a **PUSH_PROMISE** rides on the parent's id, so `frameError(5, 6, parentSid)` lands on
+    the *parent* while the *promised* stream closes with `ERR_HTTP2_STREAM_ERROR` /
+    `NGHTTP2_INTERNAL_ERROR`, `rstCode` **2**. The parent's own response still goes out and
+    closes it with `rstCode` 0, and the client never sees a push. `pushStream()`'s callback
+    still runs with no error and still receives the stream object: node hands the callback
+    to `process.nextTick` and the send loop refuses the frame after that tick, so the
+    promised stream's `respond()`/`end()` submit into a closed stream and reach no wire.
+    No priority spec, so five fields give `121 + n`; under a bound of 150, n=29 is pushed
+    and n=30 refused, and under the default n=65415 / 65416.
+  Pinned by `test/outbound-bound.test.js`, which asserts node's measured transcript first
+  for every case. The GOAWAY echo is deliberately not recorded there: whether the peer's
+  GOAWAY arrives before the local session finishes closing is a scheduling race, and node's
+  server sends two where h2lean sends one.
+- **A header block that does not fit one frame carries `END_STREAM` on its HEADERS frame,
+  not on the CONTINUATION that finishes it.** Both senders (`lib/session.js sendHeaders`,
+  `lib/client-session.js _sendHeaders`) put the flag on the last CONTINUATION and left the
+  HEADERS at `0x0`. RFC 9113 §6.2 makes the CONTINUATION frames part of the HEADERS frame,
+  §5.1 says they cause no state transition, and §8.1 states it outright for trailers: the
+  sequence starts "with a HEADERS frame ... where the HEADERS frame bears an END_STREAM
+  flag". Measured on node's wire for a 20 000-octet trailer value: `HEADERS sid 1 flags 0x1
+  len 16384`, then `CONTINUATION flags 0x4`. No receiver that follows the RFC accepted the
+  old placement — measured across all four stack pairings, a node client answered an h2lean
+  server with `ERR_HTTP2_STREAM_ERROR` and `rstCode` 1 (`PROTOCOL_ERROR`) after the response
+  headers, and an h2lean client against an h2lean server received the trailers and then
+  waited forever: no `'end'`, no `'close'`. All four pairings now report
+  `response, end, trailers, close:0`. Pinned by `test/header-split.test.js`, which asserts
+  the frame/flag sequence on both arms and the four-pairing round trip. A third path frames
+  a trailer block — one stashed behind a body that did not fit the send window, framed when
+  the queue drains — and it put the whole block in a single HEADERS however large, with no
+  CONTINUATION at all. It goes through `sendHeaders` now. Measured with a 200 000-octet body
+  ahead of a 20 000-octet trailer value: node serves the exchange, while h2lean's peer
+  answered `ERR_HTTP2_ERROR` and never saw `'end'`. Pinned by a second four-pairing case in
+  the same file.
+- **A stream ended by `RST_STREAM` reports node's error, and a graceful reset or a client
+  abort reports none.** node's rule is one line (`internal/http2/core.js:2543`): an error is
+  built only when the code is neither `NGHTTP2_NO_ERROR` (0) nor `NGHTTP2_CANCEL` (8), and
+  its message is `Stream closed with error code <name>` from the C++ `nameForErrorCode`
+  table. Measured off a live node client and a live node server, one reset per code, all 14
+  codes plus 14, 100 and 4294967295 (outside the table the message names the number). Two
+  gaps closed: a client stream answered *every* code with `ERR_HTTP2_STREAM_ERROR` and the
+  message `HTTP/2 stream error`, including 0 and 8, which node does not error on at all; and
+  a server stream answered a peer's reset with `'close'` and no `'error'` for any code.
+  Both sides now share one factory (`lib/stream.js streamErrorOf`, names in
+  `lib/frames.js ERROR_NAMES`). An inbound reset is still not a `'frameError'` on the stream
+  or the session. Pinned by `test/rst-error.test.js`, which drives a raw peer and compares
+  the full transcript on both arms for every code.
+- **A `421 Misdirected Request` answer now removes the origin it was served on from
+  `session.originSet`** (RFC 8336 §3.2; node's `emitStreamEvent`). The client session
+  records the origin each request is really sent for — an explicit `:scheme` and
+  `:authority`/`host` in the request's own headers win over the session's, the order core.js
+  `prepareRequestHeadersObject`/`getAuthority` uses — and the first response `HEADERS` with
+  `:status` 421 deletes that origin. Before this, the refused origin stayed in the set, so
+  an application that reads `originSet` to pick an authority kept choosing the one the server
+  had just rejected. Over h2c nothing changes; `originSet` reads `undefined` there on both
+  stacks. Pinned by `test/upstream/origin.test.js`.
+- **`session.altsvc()`, `session.origin()` and `connect({ maxOriginSetSize })` now produce
+  node's error strings.** Three paraphrases were visible to code that matches on
+  `error.message`. A non-string argument said `Received object` where node names the value
+  (`Received an instance of Array`, `Received type symbol (Symbol(x))`,
+  `Received function namedFn`, a string truncated at 28 characters): node's
+  `determineSpecificType` and `addNumericalSeparator` are ported in `lib/session.js` and
+  shared with the client option check. The length errors said "16382 octets" where node says
+  "16382 bytes". And `maxOriginSetSize` reported one error class for every bad value where
+  node splits `ERR_INVALID_ARG_TYPE` (a non-number) from `ERR_OUT_OF_RANGE` (`NaN`, negative).
+  Verified against `node:http2` in one session — a 26-call `altsvc` matrix, the `origin`
+  validation list, and a 17-value `maxOriginSetSize` sweep, 0 message differences — and
+  pinned by `test/upstream/altsvc.test.js`, `test/upstream/origin.test.js` and
+  `test/upstream/origin-set-max-size.test.js`.
+- **A client session's teardown now follows node's lifecycle rules in four places**, all
+  read out of `internal/http2/core.js` and measured on v26.12.1:
+  - `request()` on a destroyed or closed session **returns a stream that errors and closes**
+    instead of throwing. node keeps argument validation synchronous but captures the
+    session-state failure and dispatches `process.nextTick(requestOnError)` —
+    `this.destroy(error)` (:1836-1844, :1930-1931) — so a retry issued from a stream callback
+    does not throw before the session's lifecycle handlers run. A destroyed session gives
+    `ERR_HTTP2_INVALID_SESSION`, a closed one `ERR_HTTP2_GOAWAY_SESSION`, both on the
+    stream's `'error'` and followed by `'close'`.
+  - `ping()`, `settings()`, `goaway()`, `setNextStreamID()` and `setLocalWindowSize()` throw
+    `ERR_HTTP2_INVALID_SESSION` once the session is destroyed. Each opens with that guard in
+    node; h2lean had none, so the calls silently succeeded (and `settings({})` failed later
+    with an unrelated `ERR_INVALID_ARG_TYPE`).
+  - A request **abandoned while the socket is still connecting submits nothing**. node's
+    `requestOnConnect` returns early when the stream's session reference is gone, and
+    `_destroy` clears it (:2546), so `req.destroy()` or an aborted signal before `'connect'`
+    leaves no stream on the server. A session closed in the meantime refuses the queued
+    request with `ERR_HTTP2_GOAWAY_SESSION` rather than sending it.
+  - When the socket closes, **every live and pending stream is closed with
+    `NGHTTP2_CANCEL`** before the session closes (`socketOnClose`, :3653), and CANCEL is not
+    an error (:2543). Without the sweep a request whose HEADERS went out but whose answer
+    never came stayed live forever: the session emitted `'close'` while the stream was still
+    open and never destroyed. Measured on a server that destroys its session from its
+    `'stream'` handler — node reports the request's `'close'` with `rstCode` 8, h2lean left
+    `req.destroyed` false indefinitely.
+  Pinned by `test/upstream/client-destroy.test.js`, a port of node's
+  `test-http2-client-destroy.js`: all nine blocks, each asserted against node's measured
+  transcript first. The raw-socket destroy upstream reaches through the internal `kSocket`
+  symbol is re-expressed with the public `options.createConnection`. The session-level
+  `AbortSignal` block needed no implementation — node's http2 core wires a signal only on
+  the request path, and `connect(url, {signal})` works through `net`/`tls`, which both
+  stacks already pass the option to; the h2c and h2s transcripts are identical. The
+  request's `rstCode` in the destroy-before-goaway block is deliberately not recorded: it
+  depends on whether the GOAWAY echo lands before the socket dies, the race
+  `CONTRIBUTING.md` §5 describes.
 
 ### Measured
 

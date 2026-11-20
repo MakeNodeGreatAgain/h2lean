@@ -390,6 +390,11 @@ One line each; the measurements, the tried fixes and the standing instruction li
 * **Teardown event order** for a request nobody read: all events fire, the order within
   the teardown turn differs; tolerated by exactly two allowances in
   `test/event-order.test.js`.
+* **Which guard refuses a second `sendTrailers()` in the turn of the first**:
+  `ERR_HTTP2_TRAILERS_ALREADY_SENT` on node, `ERR_HTTP2_INVALID_STREAM` here, because node
+  defers the trailer submit to a `setImmediate` and h2lean frames it in the call. The call
+  is refused by both, and after `'close'` both report the same code. KNOWN DIVERGENCE in
+  `test/upstream/trailers.test.js`.
 * `req.pause()`/`req.read()` do not slow the peer down: stream credit is released as the
   buffered body is consumed and connection credit in half-window steps, not per `read()`.
   Documented in `lib/compat.js`; closing it would need partial credit accounting.
