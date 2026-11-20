@@ -1,6 +1,9 @@
 // What `stream.cork()` / `stream.uncork()` and the writableCorked / writableHighWaterMark
 // getters do on the server `stream`-API Http2Stream, measured against a live node:http2
-// server in this same run.
+// server in this same run. The same two shapes are then driven through the compat (req,res)
+// response, whose cork()/uncork() node delegates onto `this[kStream]`
+// (internal/http2/compat.js: `cork(){ this[kStream].cork(); }`), so the response inherits the
+// stream's behavior exactly and the delegate is pinned to the same parity/divergence.
 //
 // node's Http2Stream extends Duplex (internal/http2/core.js:2128), so cork()/uncork() are
 // Writable's: cork() buffers write()/end() and defers the DATA to the wire until the cork
@@ -91,6 +94,66 @@ function driveCork(impl) {
   });
 }
 
+// The compat (req,res) response is a different object from the low-level stream: node's
+// Http2ServerResponse delegates corking onto this[kStream] (internal/http2/compat.js). Same
+// drive as above, but through the (req,res) API, so the compat delegate is covered too.
+function driveCorkCompat(impl) {
+  return new Promise((resolve) => {
+    let clientGot = '';
+    let done = false;
+    let client;
+    const srv = impl.createServer((req, res) => {
+      req.resume();
+      const initialCorked = res.writableCorked;
+      const hwm = res.writableHighWaterMark;
+      res.cork();
+      res.cork();
+      const corkedAfter2 = res.writableCorked;
+      res.write('AAA');
+      const timeline = [];
+      const snap = (step) => timeline.push({ step, corked: res.writableCorked, got: clientGot });
+      setTimeout(() => {
+        snap('corked2');
+        res.uncork();
+        setTimeout(() => {
+          snap('corked1');
+          res.uncork();
+          setTimeout(() => {
+            snap('corked0');
+            res.uncork();
+            const floored = res.writableCorked;
+            res.end('BBB');
+            setTimeout(() => {
+              if (done) {
+                return;
+              }
+              done = true;
+              resolve({ initialCorked, hwm, corkedAfter2, floored, timeline, finalGot: clientGot });
+              client.destroy(); closeServer(srv).then(() => {});
+            }, 80);
+          }, 80);
+        }, 80);
+      }, 80);
+    });
+    srv.listen(0, '127.0.0.1', () => {
+      client = nodeHttp2.connect(`http://127.0.0.1:${srv.address().port}`);
+      client.on('error', () => {});
+      const r = client.request({ ':path': '/' });
+      r.setEncoding('utf8');
+      r.on('data', (d) => {
+        clientGot += d;
+      });
+      r.on('error', () => {});
+      r.end();
+    });
+    setTimeout(() => {
+      if (!done) {
+        done = true; resolve({ note: 'deadline' });
+      }
+    }, 1500);
+  });
+}
+
 test('cork/uncork counting and writableHighWaterMark are parity on both stacks', async () => {
   const node = await driveCork(nodeHttp2);
   assert.strictEqual(node.initialCorked, 0, `node initial: ${JSON.stringify(node)}`);
@@ -120,6 +183,35 @@ test('KNOWN DIVERGENCE: node defers DATA until uncork reaches 0, h2lean writes t
   assert.strictEqual(ours.timeline[0].got, 'AAA', `h2lean corked=2: ${JSON.stringify(ours)}`);
   assert.strictEqual(ours.timeline[1].got, 'AAA', `h2lean corked=1: ${JSON.stringify(ours)}`);
   // The final body is the same on both stacks -- only the timing of the first chunk differs.
+  assert.strictEqual(ours.finalGot, node.finalGot, `h2lean final: ${JSON.stringify(ours)}`);
+  assert.strictEqual(node.finalGot, 'AAABBB', `node final: ${JSON.stringify(node)}`);
+});
+
+test('compat res: cork/uncork counting and writableHighWaterMark delegate to parity', async () => {
+  const node = await driveCorkCompat(nodeHttp2);
+  assert.strictEqual(node.initialCorked, 0, `node initial: ${JSON.stringify(node)}`);
+  assert.strictEqual(node.corkedAfter2, 2, `node after two corks: ${JSON.stringify(node)}`);
+  assert.strictEqual(node.floored, 0, `node floors at 0: ${JSON.stringify(node)}`);
+  const ours = await driveCorkCompat(h2lean);
+  // res.cork()/uncork()/writableCorked read/write the wrapped stream's Writable side (node's
+  // compat delegate), so the count matches node exactly.
+  assert.strictEqual(ours.initialCorked, node.initialCorked, `h2lean initial: ${JSON.stringify(ours)}`);
+  assert.strictEqual(ours.corkedAfter2, node.corkedAfter2, `h2lean after two corks: ${JSON.stringify(ours)}`);
+  assert.strictEqual(ours.floored, node.floored, `h2lean floors at 0: ${JSON.stringify(ours)}`);
+  assert.deepStrictEqual(ours.timeline.map((t) => t.corked), node.timeline.map((t) => t.corked),
+    `h2lean cork timeline: ${JSON.stringify(ours)}`);
+  assert.strictEqual(ours.hwm, node.hwm, `h2lean hwm: ${JSON.stringify(ours)}`);
+});
+
+test('KNOWN DIVERGENCE: compat res defers DATA until uncork reaches 0 on node, writes through here', async () => {
+  const node = await driveCorkCompat(nodeHttp2);
+  assert.strictEqual(node.timeline[0].got, '', `node corked=2: ${JSON.stringify(node)}`);
+  assert.strictEqual(node.timeline[1].got, '', `node corked=1: ${JSON.stringify(node)}`);
+  assert.strictEqual(node.timeline[2].got, 'AAA', `node corked=0: ${JSON.stringify(node)}`);
+  const ours = await driveCorkCompat(h2lean);
+  // The compat delegate inherits the stream's counting-stub behavior: 'AAA' is already out
+  // while the response is still corked (lib/compat.js header).
+  assert.strictEqual(ours.timeline[0].got, 'AAA', `h2lean corked=2: ${JSON.stringify(ours)}`);
   assert.strictEqual(ours.finalGot, node.finalGot, `h2lean final: ${JSON.stringify(ours)}`);
   assert.strictEqual(node.finalGot, 'AAABBB', `node final: ${JSON.stringify(node)}`);
 });

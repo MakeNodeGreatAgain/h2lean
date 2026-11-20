@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.8.0] - 2026-11-20
+
+### Added
+
+- **`res.cork()` / `res.uncork()` and the `writableCorked` / `writableHighWaterMark` getters on
+  the compat `Http2ServerResponse`.** They delegate to the wrapped stream exactly as node's compat
+  layer does (`internal/http2/compat.js`: `cork(){ this[kStream].cork(); }`), so a `(req, res)`
+  handler now has the same cork surface as the low-level `stream`-API Http2Stream gained in 0.7.0.
+  That stream's cork is a counting stub, so the response inherits the same measured cross-tick
+  deferral divergence -- node buffers a corked response and defers its DATA to the wire until the
+  count reaches 0 (a live v26.12.1 server receives nothing from `res.write('AAA')` under two corks
+  until the second `uncork()`), while h2lean writes straight through. The count and
+  `writableHighWaterMark` are parity. Pinned by the compat arms of `test/cork-parity.test.js`.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added
