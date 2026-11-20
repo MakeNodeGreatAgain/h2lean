@@ -3,6 +3,26 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.7.0] - 2026-11-20
+
+### Added
+
+- **`stream.cork()` / `stream.uncork()` and the `writableCorked` / `writableHighWaterMark`
+  getters on the server `Http2Stream`.** These are a counting stub, not Writable's buffering
+  cork. node's `Http2Stream` extends Duplex, so `cork()` buffers `write()`/`end()` and defers
+  the DATA to the wire until the cork count reaches 0 -- measured on a live node v26.12.1
+  server: `write('AAA')` under two corks leaves `writableLength` 3 and the peer receives
+  nothing until the second `uncork()`. h2lean's `write()` sends straight through, because the
+  per-read socket batch already coalesces a synchronous burst of writes; only the cross-tick
+  deferral differs, and that is pinned as a KNOWN DIVERGENCE in `test/cork-parity.test.js`
+  (both stacks deliver the same final body). The count itself is parity: `writableCorked`
+  starts 0 at the application-visible point, rises 1,2 on two corks, falls 1,0 on two uncorks
+  and floors at 0 on a further uncork. `writableHighWaterMark` is node's default Writable one
+  -- `internal/http2/core.js` sets no `highWaterMark` on the stream -- read off node itself at
+  module load rather than hardcoded, so it agrees on every major (16384 on node 20, 65536 from
+  22 on). The rest of the Writable surface (`writev()`, `writableLength`, `writableEnded` and
+  the other state getters) is still absent.
+
 ## [0.6.0] - 2026-11-20
 
 ### Added

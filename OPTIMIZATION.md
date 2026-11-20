@@ -415,3 +415,34 @@ side.
     in its *API*, the honest route to the parity is a method/getter shim over the existing
     stream, or a lazy wrap only when a Duplex-only entry point is first touched — not
     `extends Duplex`.
+
+42. **The client response-read delivery mechanism costs the same intrinsic Duplex price item 41
+    measured on the server (~1.1–5.8 µs/req), but a hand-rolled readable cannot replace the
+    client base without losing `read()`/`for await` — measured, so the client stays a Duplex.**
+    `bench/micro/client-readable-cost.js` isolates the read-delivery machinery (no socket, HPACK
+    or parse) with a `hand` arm (one EventEmitter, synchronous `emit('data')` — the server's
+    design, `lib/stream.js` `_recvData`) against `duplex-data` (one `node:stream` Duplex fed by
+    `push`, configured like `ClientHttp2Stream`: `allowHalfOpen`, `decodeStrings:false`,
+    `_read(){}` — `lib/client-stream.js:47/:181/:223`). The Duplex arm uses node's own classes
+    (v26.12.1), so `hand − duplex` is the intrinsic delta against NODE's mechanism, not a
+    strawman. `cpuPerReq` medians (ABBA ×7): 1 KB/1 chunk 0.231 → 1.319 (+1.09 µs, ×5.7);
+    16 KB/8 chunks 0.199 → 1.867 (+1.67, ×9.4); 256 KB/128 chunks 1.733 → 7.495 (+5.76, ×4.3).
+    The scaling matches item 41's server prediction (~1.4 µs at 1 chunk, ~6.5 µs at 128 pushes)
+    — the same two state objects plus the nextTick flow loop. The surfaces a hand-rolled client
+    would have to rebuild, priced against `duplex-data`: `read()` +0.06–0.28 µs (cheap),
+    `.pipe()` +3.9–5.9 µs, `for await` +13–22 µs (the async iterator's per-chunk
+    promise/microtask). `bench/micro/client-readable-correctness.js` runs the same four consumers
+    against node's Duplex and a hand-rolled readable: `'data'` works on both; `read()` and
+    `for await` FAIL on the hand-rolled one (no `read` method, not async iterable); `.pipe()`
+    fails on a bare EventEmitter and works only with `extends Stream` (the server's option A),
+    which still leaves `read()`/`for await` broken. Two facts decide it: (a) the saving is only
+    on the flowing `'data'` mode — the client contract also needs `read()`/`for await`/pipe with
+    error-forwarding and *consumer* backpressure (the Readable `highWaterMark` buffer, which the
+    HTTP/2 wire windows do NOT provide: they gate the peer, not a slow consumer — the same
+    limitation `lib/compat.js` documents for `req.pause()`); (b) node's `ClientHttp2Stream` is
+    ALSO a Duplex, so h2lean's client is at PARITY here, not behind — hand-rolling would be a
+    speculative beat-node win on the flowing path, not a regression fix, and the end-to-end
+    client share is item 30 / `bench/client`, of which these ~1–6 µs are a fraction. The honest
+    route, if pursued, is a hand-rolled Readable reproducing the full surface, gated on a paired
+    end-to-end client matrix (AGENTS.md §7) — not a base-class swap. The server took the cheap
+    win (item 41: bare base, now `pipe()` via `Stream`); the client has no equivalent free win.
