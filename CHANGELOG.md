@@ -3,6 +3,47 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.5.3] - 2026-11-20
+
+### Fixed
+
+- **A client stream destroyed by the application reports node's reset code.**
+  `ClientHttp2Stream._destroy` called `session.rstStream(id)` with no code, so every
+  application destroy framed `RST_STREAM(CANCEL)` and left `rstCode` at 0. node derives
+  the code (`internal/http2/core.js:2503-2522`): a stream whose wire life already ended
+  keeps the code it closed with, otherwise the session's `goawayCode || destroyCode` is
+  the starting point and an error overrides it -- the session's code first, then `CANCEL`
+  for node's own `AbortError`, then `INTERNAL_ERROR`. Measured on a live node client
+  against a raw frame-decoding peer, and now matched:
+  - `req.destroy()` frames `RST_STREAM(0)` and reports `rstCode` 0 (was 8 on the wire);
+  - `req.destroy(new Error(...))` frames `RST_STREAM(2)`, reports `rstCode` 2 and re-emits
+    the caller's error unchanged (was 8 and 0);
+  - an aborted `options.signal` frames `RST_STREAM(8)` and reports `rstCode` 8. The
+    `AbortError` is now a class rather than a plain `Error` carrying the name, because
+    node tests `err instanceof AbortError`: an application error merely *named*
+    `AbortError` takes the `INTERNAL_ERROR` branch on both stacks;
+  - a request body still open is `'aborted'` and then ended before the reset goes out,
+    as node's `closeStream` does. `writableEnded` afterwards is true for `destroy()` and
+    false for `destroy(err)`, matching node's own Duplex behaviour;
+  - a destroy after the stream closed still puts nothing on the wire.
+- **`client.destroy(error, code)` normalizes its arguments as node does**
+  (`core.js:1622-1637`): a number *is* the code and builds `ERR_HTTP2_SESSION_ERROR` for a
+  non-zero one, an error with no code implies `INTERNAL_ERROR`, and an explicit second
+  argument wins. The code is recorded as the session's `destroyCode`, so an open stream
+  destroyed with the session reports `rstCode` 0 / 2 / 8 / 1 for `destroy()`,
+  `destroy(err)`, `destroy(8)` and `destroy(err, 1)` -- all four previously reported 0,
+  and `destroy(8)` emitted the number itself as the error. The inbound-reset and
+  outbound-refusal paths now reach the same derivation node uses (`closeStream` records
+  the code, `destroy()` carries no error, `_destroy` synthesizes
+  `ERR_HTTP2_STREAM_ERROR` from it), so a peer's reset code is no longer at risk of being
+  overridden by the error branch.
+- Known gaps left open and written into `test/client/client-destroy-code.test.js`: node's
+  `session.destroy()` also submits `GOAWAY(last=0, code)` and h2lean's does not; and a
+  non-zero inbound `GOAWAY` destroys node's session at once (`core.js:781`) while h2lean
+  leaves it open, so a stream destroyed after one reports the caller's error and frames a
+  reset where node reports `ERR_HTTP2_SESSION_ERROR` and frames nothing. The `rstCode`
+  agrees in both.
+
 ## [0.5.2] - 2026-11-20
 
 ### Fixed
