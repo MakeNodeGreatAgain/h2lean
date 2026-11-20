@@ -42,11 +42,11 @@
 // GOAWAY(last=0, code) and the N-1 resets a destroy also submits are pinned by
 // test/client/client-destroy-goaway.test.js.
 //
-// KNOWN DIVERGENCE, not pinned here: a non-zero inbound GOAWAY destroys node's
-// session at once (onGoawayData, core.js:781: destroy(ERR_HTTP2_SESSION_ERROR(code),
-// NO_ERROR)) while h2lean leaves it open, so a stream destroyed after one reports the
-// caller's error and frames a reset where node reports ERR_HTTP2_SESSION_ERROR and
-// frames nothing; the rstCode agrees (the goaway code) but the rest does not.
+// A non-zero inbound GOAWAY takes the same derivation from the other side: onGoawayData
+// (core.js:781) destroys the session with ERR_HTTP2_SESSION_ERROR(code) and NO_ERROR on
+// the wire, so sessionCode is the peer's code and every open stream reports it. That
+// branch, its event order and the absence of any RST_STREAM are pinned by
+// test/client/client-goaway-inbound.test.js.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');

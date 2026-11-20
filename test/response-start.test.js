@@ -14,6 +14,14 @@
 //   * node also closes a stream whose request body nobody read (RST_STREAM(NO_ERROR) after the
 //     response). That is the second open item of section 10, so the transcripts here compare
 //     the response frames and record the reset separately.
+//   * a response STARTED and then destroyed in the same turn of the loop is the third: node
+//     submits the HEADERS to nghttp2 but nothing flushes them before the destroy, so the
+//     queued response is discarded and the peer sees only RST_STREAM(0). h2lean frames the
+//     HEADERS as respond() runs and the batch leaves at the end of the read, so they reach
+//     the peer. Measured with tools/probe-zero-write.js for write(''), respond(),
+//     respond()+end() and respond()+close(); a NON-empty write flushes in the same turn on
+//     both stacks, and so does a destroy a setImmediate later -- the trigger is the turn,
+//     not the empty write. Same root cause as the refusal-batch item of section 10.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
@@ -197,3 +205,80 @@ test('KNOWN DIVERGENCE: end() with no body answers 200 where node says nothing',
   assert.strictEqual(got[1].wire, 'HEADERS/EH{:status=200} DATA()/ES RST(0)', `h2lean: ${got[1].wire}`);
   assert.strictEqual(got[1].state, '{"headersSent":true,"rst":0}', `h2lean: ${got[1].state}`);
 });
+
+test('a non-empty write flushes the response even when the stream is destroyed at once', async () => {
+  // The control for the divergence below: bytes actually submitted make node send in the
+  // same turn, so the HEADERS and the DATA reach the peer ahead of the reset. h2lean agrees.
+  const apps = [
+    (stream) => {
+      stream.write('x'); stream.destroy();
+    },
+    (stream) => {
+      stream.respond({ ':status': 200 }); stream.write('x'); stream.destroy();
+    }
+  ];
+  for (const app of apps) {
+    const got = await both(app);
+    assert.strictEqual(got[0].wire, 'HEADERS/EH{:status=200} DATA(x) RST(0)',
+      `node: ${got[0].wire}`);
+    assert.strictEqual(got[1].wire, got[0].wire, `h2lean: ${got[1].wire}`);
+  }
+});
+
+test('a destroy a turn later finds the headers already out, on both stacks', async () => {
+  // The other control: the trigger is the turn of the loop, not the empty write. Once a
+  // turn has passed node has flushed the queued HEADERS and the two arms agree again.
+  const apps = [
+    (stream) => {
+      stream.respond({ ':status': 200 }); setImmediate(() => stream.destroy());
+    },
+    (stream) => {
+      stream.write(''); setTimeout(() => stream.destroy(), 30);
+    }
+  ];
+  for (const app of apps) {
+    const got = await both(app);
+    assert.strictEqual(got[0].wire, 'HEADERS/EH{:status=200} RST(0)', `node: ${got[0].wire}`);
+    assert.strictEqual(got[1].wire, got[0].wire, `h2lean: ${got[1].wire}`);
+  }
+});
+
+test('KNOWN DIVERGENCE: a response started and destroyed in the same turn still goes out here',
+  async () => {
+    // node submits the HEADERS to nghttp2 and nothing sends them before the destroy: the
+    // session teardown discards what was queued and the peer sees only the reset. h2lean
+    // frames the HEADERS into the outbound batch as respond() runs and the batch leaves at
+    // the end of the read, so they reach the peer. headersSent and rstCode agree on every
+    // shape -- only whether a HEADERS (and an END_STREAM) reaches the peer differs.
+    //
+    // Same root cause as the refusal-batch item of AGENTS.md section 10: matching node
+    // means discarding outbound state at destroy time, which the staging buffer has no
+    // per-stream handle on. The last shape is the Duplex write queue rather than the
+    // flush: the second write is still buffered when the destroy runs, so node submitted
+    // nothing for it at all.
+    const shapes = [
+      ['write("")', (stream) => {
+        stream.write(''); stream.destroy();
+      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
+      ['respond()', (stream) => {
+        stream.respond({ ':status': 200 }); stream.destroy();
+      }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)'],
+      ['respond()+end()', (stream) => {
+        stream.respond({ ':status': 200 }); stream.end(); stream.destroy();
+      }, 'RST(0)', 'HEADERS/EH{:status=200} DATA()/ES RST(0)'],
+      ['respond()+end(body)', (stream) => {
+        stream.respond({ ':status': 200 }); stream.end('body'); stream.destroy();
+      }, 'HEADERS/EH{:status=200} DATA(body) RST(0)',
+      'HEADERS/EH{:status=200} DATA(body)/ES RST(0)'],
+      ['write("")+write(x)', (stream) => {
+        stream.write(''); stream.write('x'); stream.destroy();
+      }, 'RST(0)', 'HEADERS/EH{:status=200} DATA(x) RST(0)']
+    ];
+    for (const [label, app, nodeWire, oursWire] of shapes) {
+      const got = await both(app);
+      assert.strictEqual(got[0].wire, nodeWire, `node, ${label}: ${got[0].wire}`);
+      assert.strictEqual(got[0].state, '{"headersSent":true,"rst":0}', `node, ${label}`);
+      assert.strictEqual(got[1].wire, oursWire, `h2lean, ${label}: ${got[1].wire}`);
+      assert.strictEqual(got[1].state, got[0].state, `h2lean state, ${label}`);
+    }
+  });

@@ -15,15 +15,25 @@
 //     GOAWAY carrying the destroy code -- both in the same tick and a tick apart;
 //   * with no request at all the GOAWAY still goes out;
 //   * a destroy while connecting puts nothing on the wire;
-//   * the open streams are reset with the session's code, ALL BUT THE LAST of them:
-//     one open stream produces no RST_STREAM, two produce RST(1), three produce
-//     RST(1) RST(3), four produce RST(1) RST(3) RST(5), each in ascending id order and
-//     ahead of the GOAWAY. The codes track the session's (0, 2 and 8 for the three
-//     destroy shapes). A stream the application already destroyed is not counted: with
-//     two requests and the second one destroyed first, the session destroy sends the
-//     GOAWAY alone. Why the last open stream is exempt lives in the C++ layer
-//     (node_http2.cc / nghttp2), which was not read -- the rule pinned here is the wire
-//     measurement, repeated across four stream counts and three codes, not a derivation.
+//   * the open streams are reset ALL BUT THE LAST of them: one open stream produces no
+//     RST_STREAM, two produce RST(1), three produce RST(1) RST(3), four produce
+//     RST(1) RST(3) RST(5), each in ascending id order and ahead of the GOAWAY. A stream
+//     the application already destroyed is not counted: with two requests and the second
+//     one destroyed first, the session destroy sends the GOAWAY alone. Why the last open
+//     stream is exempt lives in the C++ layer (node_http2.cc / nghttp2), which was not
+//     read -- the rule pinned here is the wire measurement, repeated across four stream
+//     counts and three codes, not a derivation;
+//   * the reset code is each stream's OWN derivation, not the goodbye's.
+//     Http2Stream._destroy (core.js:2504-2521) reads sessionCode =
+//     goawayCode || destroyCode and only falls back to the error when that is zero:
+//     node's internal AbortError to CANCEL(8), anything else to INTERNAL_ERROR(2). So
+//     destroy(err, 0) sends GOAWAY(0,0) beside RST(1,2), and destroy(abortError, 0)
+//     sends GOAWAY(0,0) beside RST(3,8) -- both measured, the second through a request
+//     aborted by its own AbortSignal, which is how an application holds that error;
+//   * the closed flag belongs to close() alone (core.js:1657). A bare goaway() leaves it
+//     false and the next request() still reaches the wire; close() sets it synchronously
+//     and refuses the next request ERR_HTTP2_GOAWAY_SESSION; destroy() leaves it false
+//     while destroyed is true. All three measured on a live node client.
 //
 // Not pinned, both measured and below the HTTP/2 surface: whether the peer sees a clean
 // socket close or ECONNRESET after the goodbye (node's finishSessionClose ends the socket
@@ -111,14 +121,16 @@ function closePeer(srv) {
 }
 
 // `count` requests are made and left open; `pre` destroys the last of them before the
-// session destroy; `closeFirst` runs a graceful close() first; `connecting` destroys
-// before the 'connect' event. The wire is returned in order -- frame order is the point
-// -- and the session's own reports sorted, since the teardown turn's internal order is
-// not what is under test.
+// session destroy; `abortFirst` aborts the first one through its own AbortSignal and
+// hands the resulting error to `destroy`; `closeFirst` runs a graceful close() first;
+// `connecting` destroys before the 'connect' event. The wire is returned in order --
+// frame order is the point -- and the session's own reports sorted, since the teardown
+// turn's internal order is not what is under test.
 async function transcript(impl, opts) {
   const wire = [];
   const { srv, port } = await peer(wire);
   const out = [];
+  let aborted;
   try {
     const client = impl.connect(`http://127.0.0.1:${port}`);
     client.on('error', (e) => out.push(`session error ${e.code}/${e.message}`));
@@ -126,15 +138,30 @@ async function transcript(impl, opts) {
     if (!opts.connecting) {
       await new Promise((r) => client.once('connect', r));
       const reqs = [];
+      let ac;
       for (let i = 0; i < (opts.count || 0); i++) {
-        const req = client.request({ ':path': `/${i}` });
-        req.on('error', () => {});
+        let ropts;
+        if (opts.abortFirst && i === 0) {
+          ac = new AbortController();
+          ropts = { signal: ac.signal };
+        }
+        const req = client.request({ ':path': `/${i}` }, ropts);
+        req.on('error', (e) => {
+          if (opts.abortFirst && i === 0) {
+            aborted = e;
+          }
+        });
         req.on('close', () => out.push(`close ${i} rstCode=${req.rstCode}`));
         req.resume();
         reqs.push(req);
       }
       if (opts.count) {
         await new Promise((r) => setTimeout(r, 60));
+      }
+      if (opts.abortFirst) {
+        ac.abort();
+        await new Promise((r) => setTimeout(r, 60));
+        wire.length = 0;
       }
       if (opts.pre) {
         reqs[reqs.length - 1].destroy();
@@ -148,7 +175,7 @@ async function transcript(impl, opts) {
         }
       }
     }
-    opts.destroy(client);
+    opts.destroy(client, aborted);
     await new Promise((r) => setTimeout(r, 150));
   } finally {
     await closePeer(srv);
@@ -228,3 +255,74 @@ test('a stream already destroyed is not counted, and a connecting session sends 
       assert.deepStrictEqual(ours.events, native.events, `${label} events`);
     }
   });
+
+test('the reset code is the stream derivation, not the goodbye code', async () => {
+  // An explicit zero code zeroes the GOAWAY and not the resets: with no goawayCode and
+  // destroyCode 0 the derivation falls through to the error (core.js:2512-2520).
+  const plain = { count: 2, destroy: (c) => c.destroy(new Error('boom'), 0) };
+  const native = await transcript(http2, plain);
+  assert.deepStrictEqual(native.wire,
+    ['HEADERS(1)', 'HEADERS(3)', 'RST(1,2)', 'GOAWAY(0,0)'], 'node wire');
+  const ours = await transcript(h2lean, plain);
+  assert.deepStrictEqual(ours, native, 'a plain error and code 0');
+  // node's own AbortError takes the CANCEL arm instead. The application holds it from
+  // the aborted request's 'error'; three requests leave two open after the abort, so
+  // exactly one reset goes out and it carries 8.
+  const abort = { count: 3, abortFirst: true, destroy: (c, e) => c.destroy(e, 0) };
+  const nativeAbort = await transcript(http2, abort);
+  assert.deepStrictEqual(nativeAbort.wire, ['RST(3,8)', 'GOAWAY(0,0)'], 'node abort wire');
+  const oursAbort = await transcript(h2lean, abort);
+  assert.deepStrictEqual(oursAbort, nativeAbort, 'an AbortError and code 0');
+});
+
+// What a call leaves the closed flag at, and whether the next request still reaches the
+// wire. The peer never answers, so a request that was submitted stays open and its
+// HEADERS is the evidence; one that was refused reports its error instead.
+async function afterCall(impl, call) {
+  const wire = [];
+  const { srv, port } = await peer(wire);
+  const late = [];
+  let flags;
+  let seen;
+  try {
+    const client = impl.connect(`http://127.0.0.1:${port}`);
+    client.on('error', () => {});
+    await new Promise((r) => client.once('connect', r));
+    const first = client.request({ ':path': '/first' });
+    first.on('error', () => {});
+    first.resume();
+    await new Promise((r) => setTimeout(r, 60));
+    call(client);
+    flags = `closed=${client.closed} destroyed=${client.destroyed}`;
+    const req = client.request({ ':path': '/after' });
+    req.on('error', (e) => late.push(`error ${e.code}`));
+    req.on('close', () => late.push(`close ${req.rstCode}`));
+    req.resume();
+    await new Promise((r) => setTimeout(r, 150));
+    // The peer teardown closes the socket, and a live request answers that with a
+    // CANCEL -- after the exchange under test is over, and on a different turn per arm.
+    seen = { wire: wire.slice(), late: late.slice().sort() };
+  } finally {
+    await closePeer(srv);
+  }
+  return { wire: seen.wire, flags, late: seen.late };
+}
+
+test('the closed flag belongs to close() alone', async () => {
+  const shapes = [
+    ['goaway()', (c) => c.goaway(), 'closed=false destroyed=false',
+      ['HEADERS(1)', 'GOAWAY(0,0)', 'HEADERS(3)'], []],
+    ['close()', (c) => c.close(), 'closed=true destroyed=false',
+      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_GOAWAY_SESSION']],
+    ['destroy()', (c) => c.destroy(), 'closed=false destroyed=true',
+      ['HEADERS(1)', 'GOAWAY(0,0)'], ['close 2', 'error ERR_HTTP2_INVALID_SESSION']]
+  ];
+  for (const [label, call, flags, wire, late] of shapes) {
+    const native = await afterCall(http2, call);
+    assert.strictEqual(native.flags, flags, `node flags, ${label}`);
+    assert.deepStrictEqual(native.wire, wire, `node wire, ${label}`);
+    assert.deepStrictEqual(native.late, late, `node late request, ${label}`);
+    const ours = await afterCall(h2lean, call);
+    assert.deepStrictEqual(ours, native, label);
+  }
+});

@@ -390,7 +390,11 @@ One line each; the measurements, the tried fixes and the standing instruction li
 * **An answer queued in the same read batch as a refusal** goes out here and is discarded
   by node; the codes agree, only whether a HEADERS reaches the peer differs. KNOWN
   DIVERGENCE in `test/inbound-limits.test.js`; it explains the two h2lean-only
-  `npm run spec` arms (http2/8.1.2.6).
+  `npm run spec` arms (http2/8.1.2.6). The **destroy** side is the same decision: a
+  response started and destroyed in the same turn of the loop reaches the peer here,
+  where node's queued HEADERS are discarded and only `RST_STREAM` goes out — the trigger
+  is the turn, not an empty `write()`. KNOWN DIVERGENCE in `test/response-start.test.js`,
+  measured by `tools/probe-zero-write.js`.
 * **The h2spec arms both stacks fail are not ours to fix — do not bend the code to the
   tool.** They check RFC 7540 wording RFC 9113 changed or dropped. Encoded in the
   `DOCUMENTED` map in `tools/check-h2spec.js`; add a §5 write-up before adding a key.

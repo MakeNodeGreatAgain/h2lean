@@ -3,6 +3,58 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.5.5] - 2026-11-20
+
+### Fixed
+
+- **A non-zero inbound `GOAWAY` destroys the client session.** Only a `NO_ERROR` goodbye
+  began the graceful close, so a peer's error code left the session open and a stream
+  destroyed afterwards reported the caller's error and framed a reset. node's
+  `onGoawayData` (`internal/http2/core.js:770-782`) branches on the code and destroys at
+  once with `ERR_HTTP2_SESSION_ERROR(code)` -- but answers `GOAWAY(NO_ERROR)`, because
+  "there was no error condition on this side of the session that caused the shutdown".
+  Measured on a live node client against a raw frame-decoding peer and now matched:
+  - codes 1, 2, 7 and 8 all destroy synchronously. The session and every open stream
+    report `ERR_HTTP2_SESSION_ERROR` naming the peer's code, each stream's `rstCode` is
+    that code, and the event order is `goaway`, then per stream `error` followed by
+    `close` in ascending id order, then the session's `error` and `close`;
+  - the wire carries the request `HEADERS` and `GOAWAY(last=0, code=0)` **alone** -- no
+    `RST_STREAM` for any stream count, where an application `destroy()` resets all but
+    the last open stream. nghttp2 has already closed the streams, so `closeSession`'s
+    `stream.destroy` finds no handle to submit through (`core.js:2526`). The nghttp2 half
+    was not read; the rule is the measurement across three stream counts;
+  - `lastStreamID` does not change this branch: 0, 1, 3 and 5 give the same transcript;
+  - `destroyed` is true and `closed` stays false; a request made afterwards is accepted
+    rather than thrown and errors `ERR_HTTP2_INVALID_SESSION` with the goaway code as its
+    `rstCode`; the debug tail arrives as a `Buffer`, `undefined` when the peer sent none.
+  Pinned by `test/client/client-goaway-inbound.test.js`, which also pins the `NO_ERROR`
+  control whose `lastStreamID` covers the open streams. This closes the second of the two
+  gaps recorded under 0.5.3. A `NO_ERROR` goodbye whose `lastStreamID` is *below* the open
+  ids is a separate, still-open gap: node refuses the unprocessed streams itself with
+  `REFUSED_STREAM`, h2lean leaves them alive.
+- **The resets a `destroy()` submits carry each stream's own derived code.** They were
+  framed with the session's goodbye code, so an explicit zero zeroed the resets too.
+  `Http2Stream._destroy` (`core.js:2504-2521`) starts from `goawayCode || destroyCode`
+  and only falls back to the error when that is zero -- `CANCEL` for node's own
+  `AbortError`, `INTERNAL_ERROR` for anything else. Measured and now matched:
+  `destroy(new Error('boom'), 0)` frames `RST_STREAM(2)` beside `GOAWAY(0,0)`, and
+  `destroy(abortError, 0)` frames `RST_STREAM(8)` beside `GOAWAY(0,0)`, the error captured
+  from a request aborted through its own `AbortSignal`.
+- **`closed` belongs to `close()` alone.** Both `goaway()` and `destroy()` set it, where
+  node sets `SESSION_FLAGS_CLOSED` only in `close()` (`core.js:1657`) and never in
+  `goaway()` (`core.js:1602-1618`). Measured on a live node client and now matched: after
+  a bare `goaway()` `closed` is false and the next `request()` still reaches the wire
+  (h2lean refused it `ERR_HTTP2_GOAWAY_SESSION`); after `destroy()` `closed` is false
+  while `destroyed` is true; `close()` sets it synchronously and a second `close()` is a
+  no-op, so the goodbye no longer goes out twice. Two companion fixes the flag move
+  exposed: the graceful-close gate is re-checked when the outbound batch drains, without
+  which a `close()` whose goodbye was still staged when the last stream closed never
+  finished; and it now counts the pre-connect request queue as live, the way node's
+  `kMaybeDestroy` counts `state.pendingStreams` (`core.js:1689-1691`), so a `close()`
+  before the socket connects still lets the drain refuse the pending request
+  `ERR_HTTP2_GOAWAY_SESSION` instead of cancelling it.
+  Pinned by `test/client/client-destroy-goaway.test.js`.
+
 ## [0.5.4] - 2026-11-20
 
 ### Fixed

@@ -363,6 +363,17 @@ the decision, the measurements and the pins. None of them is a to-do list.
   `RST_STREAM(PROTOCOL_ERROR)` short, `GOAWAY(INTERNAL_ERROR)` long — only h2lean's
   HEADERS reaches the tool first and node's does not. Re-run against a reading handler and
   the arm is green; the content-length accounting itself is at parity.
+  The **destroy** side of the same decision is measured by `tools/probe-zero-write.js` and
+  pinned in `test/response-start.test.js`: a response started and then destroyed in the
+  same turn of the loop (`write('')`, `respond()`, `respond()+end()`, `respond()+close()`)
+  reaches the peer here and not on node, where nghttp2 has the HEADERS queued but nothing
+  has sent them before the teardown discards them — the peer sees `RST_STREAM(0)` alone.
+  The trigger is the turn, not the empty write: `write('x')` then `destroy()` flushes on
+  both arms, and so does a destroy a `setImmediate` later. `respond()+end('body')` then
+  `destroy()` loses the END_STREAM on node (its `endCheckNT` had not run) and keeps it
+  here. `headersSent` and `rstCode` agree on every shape. Matching node means discarding
+  outbound state at destroy time, and the staging buffer is flat bytes with no per-stream
+  handle on them — the same patch the refusal case needs, not a second one.
 * **The h2spec arms that both stacks fail are not ours to fix — do not bend the code to
   the tool.** `npm run spec` prints three buckets and the middle one ("both (n) — node
   deviates too, parity keeps it") is the one that gets read as a bug list. Four arms sit
