@@ -24,6 +24,7 @@ const assert = require('node:assert');
 const net = require('node:net');
 const f = require('../lib/frames');
 const h2lean = require('../index');
+const http2 = require('node:http2');
 const { listen, closeServer } = require('./diff-harness');
 
 function frame(type, flags, sid, payload) {
@@ -378,4 +379,104 @@ test('a trailer block may not contain pseudo-headers', async () => {
   await closeServer(srv);
   assert.deepStrictEqual(res, ['headers', 'rst:1'], 'the trailers were refused, not emitted');
   assert.deepStrictEqual(reached, ['stream'], "no 'trailers' event for a bad block");
+});
+
+// A refused request is not a 'frameError'. node's onFrameError is the SEND-error path --
+// core.js:675 says "Called by the native layer when an error has occurred sending a
+// frame. This should be exceedingly rare." -- and it emits (type, code, id). Measured on
+// a live node v26.12.1 server for the four refusals below (out/probe-frameerror.js): no
+// 'frameError' on the stream or on the session in any of them, RST_STREAM(PROTOCOL_ERROR)
+// on the wire, and ERR_HTTP2_STREAM_ERROR on the stream where a stream object exists at
+// all. lib/session.js _streamError used to emit one on the session with the id and the
+// code swapped and DATA hardcoded as the type; the outbound refusals (_refuseSend, the
+// PUSH_PROMISE bound) are the ones that own this event, and test/outbound-bound.test.js
+// pins their (type, code, id) order.
+const REFUSALS = [
+  ['a trailer block carrying a pseudo-header', [
+    frame(f.HEADERS, f.F_END_HEADERS, 1, GOOD),
+    frame(f.DATA, 0, 1, B(0x35)),
+    frame(f.HEADERS, f.F_END_HEADERS | f.F_END_STREAM, 1, B(0x82))
+  ]],
+  ['a trailer block without END_STREAM', [
+    frame(f.HEADERS, f.F_END_HEADERS, 1, GOOD),
+    frame(f.HEADERS, f.F_END_HEADERS, 1, lit('x-tail', '1'))
+  ]],
+  ['a connection-specific request field', [
+    frame(f.HEADERS, f.F_END_HEADERS | f.F_END_STREAM, 1,
+      Buffer.concat([GOOD, lit('connection', 'keep-alive')]))
+  ]],
+  ['an unknown request pseudo-header', [
+    frame(f.HEADERS, f.F_END_HEADERS | f.F_END_STREAM, 1,
+      Buffer.concat([GOOD, lit(':nonsense', '1')]))
+  ]]
+];
+
+async function refusalTranscript(impl, frames) {
+  const out = { verdict: 'nothing', streamError: null, frameError: null, sessionFrameError: null };
+  const srv = impl.createServer();
+  srv.on('error', () => {});
+  srv.on('session', (sess) => {
+    sess.on('error', () => {});
+    sess.on('frameError', (type, code, id) => {
+      out.sessionFrameError = `${type}/${code}/${id}`;
+    });
+  });
+  srv.on('stream', (stream) => {
+    stream.on('error', (e) => {
+      out.streamError = e.code;
+    });
+    stream.on('frameError', (type, code, id) => {
+      out.frameError = `${type}/${code}/${id}`;
+    });
+    stream.respond({ ':status': 200 }, { endStream: true });
+  });
+  const port = await listen(srv);
+  const wire = await new Promise((resolve) => {
+    const seen = [];
+    const sock = net.connect(port, '127.0.0.1');
+    let acc = Buffer.alloc(0);
+    sock.on('error', () => {});
+    sock.on('data', (d) => {
+      acc = Buffer.concat([acc, d]);
+      for (;;) {
+        if (acc.length < f.HEADER_LEN) {
+          return;
+        }
+        const h = headOf(acc, 0);
+        if (acc.length < f.HEADER_LEN + h.len) {
+          return;
+        }
+        const payload = acc.subarray(f.HEADER_LEN, f.HEADER_LEN + h.len);
+        acc = acc.subarray(f.HEADER_LEN + h.len);
+        if (h.type === f.SETTINGS && !(h.flags & f.F_ACK)) {
+          sock.write(frame(f.SETTINGS, f.F_ACK, 0, B()));
+        } else if (h.type === f.RST_STREAM) {
+          seen.push(`rst:${payload.readUInt32BE(0)}`);
+        } else if (h.type === f.GOAWAY) {
+          seen.push(`goaway:${payload.readUInt32BE(4)}`);
+        }
+      }
+    });
+    sock.on('connect', () => {
+      sock.write(Buffer.concat([f.PREFACE, frame(f.SETTINGS, 0, 0, B()), ...frames]));
+    });
+    setTimeout(() => {
+      sock.destroy();
+      resolve(seen.length ? seen.join('+') : 'nothing');
+    }, 300);
+  });
+  await closeServer(srv);
+  out.verdict = wire;
+  return out;
+}
+
+test('an inbound refusal reports no frameError on the stream or the session', async () => {
+  for (const [label, frames] of REFUSALS) {
+    const native = await refusalTranscript(http2, frames);
+    assert.strictEqual(native.verdict, 'rst:1', `node wire, ${label}`);
+    assert.strictEqual(native.frameError, null, `node stream frameError, ${label}`);
+    assert.strictEqual(native.sessionFrameError, null, `node session frameError, ${label}`);
+    const ours = await refusalTranscript(h2lean, frames);
+    assert.deepStrictEqual(ours, native, label);
+  }
 });

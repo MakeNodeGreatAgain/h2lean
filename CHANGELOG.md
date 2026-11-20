@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.5.2] - 2026-11-20
+
+### Fixed
+
+- **An inbound request refusal no longer emits a session `'frameError'`.**
+  `lib/session.js` `_streamError` emitted one with the stream id and the error code
+  swapped and `DATA` hardcoded as the frame type. node's `onFrameError` is the *send*-error
+  path -- its own comment reads "Called by the native layer when an error has occurred
+  sending a frame. This should be exceedingly rare." (`internal/http2/core.js:675`) -- and
+  emits `(type, code, id)`. Measured on a live node server for a trailer block carrying a
+  pseudo-header, a trailer block without `END_STREAM`, a `WINDOW_UPDATE` overflowing the
+  send window, a connection-specific request field and an unknown request pseudo-header:
+  node emitted no `'frameError'` on the stream or the session in any of the five. The
+  outbound refusals (`_refuseSend`, the PUSH_PROMISE bound) keep the event and already had
+  node's argument order. `test/request-validation.test.js` now pins the four
+  stream-refusal shapes differentially, on both emitters.
+
 ## [0.5.1] - 2026-11-20
 
 ### Fixed
