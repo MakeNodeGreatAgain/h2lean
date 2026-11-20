@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.6.0] - 2026-11-20
+
+### Added
+
+- **`stream.pipe()` on the server `Http2Stream`.** The low-level `stream`-API server stream now
+  extends `stream.Stream` instead of a bare `EventEmitter`, so `stream.pipe(dest)` forwards the
+  request body to a destination -- the one part of node's Duplex surface real code reaches for
+  that was missing. The base is `Stream`, not `Duplex`, deliberately: the Duplex machinery (two
+  state objects plus the nextTick read loop) is the ~1.2-1.4 us/req cost measured in
+  OPTIMIZATION.md item 41, and `Stream.prototype.pipe` supplies the method without it. Measured
+  against a live node server (`test/pipe-parity.test.js`): piping the stream as a SOURCE now
+  delivers the body in full and finishes the dest, at parity; piping a source INTO the stream
+  (the response-write path) already worked, because `write()` returns real backpressure and
+  `'drain'` fires when the peer returns flow-control credit. One residual is pinned as a known
+  divergence: a stream destroyed mid-pipe leaves the dest at `pipe,close` where node's Duplex
+  pipe also emits `finish,unpipe` -- legacy `Stream.pipe` ends the dest only on the source
+  `'end'`. The rest of the Duplex surface (`read()`, `unpipe()`, `writev()`, `cork()/uncork()`,
+  the async iterator and the `readable`/`writable` state getters) is still absent.
+
 ## [0.5.5] - 2026-11-20
 
 ### Fixed
