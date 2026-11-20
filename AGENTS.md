@@ -353,14 +353,26 @@ for h2lean alone, and each has both a parity assertion and an anchor in
 * Commit **after each logically significant change**, as soon as it is verified and the user has confirmed — do not batch unrelated work into one commit. Verified means
   `npm test` green **and `npm run lint` clean**, plus the mutation harness re-run for any
   touched guard anchor. A red or half-finished state is not a trigger.
-* Message: `type: imperative summary` (`fix:`, `perf:`, `test:`, `docs:`, `refactor:`,
-  `chore:`), subject ≤ 72 chars; the body explains **why**, not what, and includes the
-  measurement or node source/probe that justified a claim.
-* `CHANGELOG.md` keeps the user-facing history under `## [Unreleased]` (Keep-a-Changelog:
-  `Added` / `Changed` / `Fixed` / `Measured`): anything observable from outside, with
-  paired numbers and noise for a performance result. A pure internal refactor goes in the
-  commit message only. Never commit generated artifacts (`out/`, `profs*/`,
-  `*.cpuprofile`); `lib/hpack-data.js` is generated but committed on purpose.
+* Message: `type: imperative summary` (`feat:`, `fix:`, `perf:`, `test:`, `docs:`,
+  `refactor:`, `chore:`), subject ≤ 72 chars; the body explains **why**, not what, and
+  includes the measurement or node source/probe that justified a claim.
+* `CHANGELOG.md` keeps the user-facing history (Keep-a-Changelog: `Added` / `Changed` /
+  `Fixed` / `Measured`): anything observable from outside, with paired numbers and noise
+  for a performance result. A pure internal refactor goes in the commit message only.
+  Never commit generated artifacts (`out/`, `profs*/`, `*.cpuprofile`);
+  `lib/hpack-data.js` is generated but committed on purpose.
+* **A CHANGELOG entry and a version bump are one change.** The commit that adds a
+  user-facing entry also cuts it into a release: rename `## [Unreleased]` to
+  `## [X.Y.Z] - <date>` and bump `package.json` **and both version fields in
+  `package-lock.json`** — the top-level one and `packages[""]`. A dependency's own range
+  that happens to spell the old number is not ours to touch. Semver: new public surface →
+  minor, fixes and parity work only → patch, a removed or renamed export or a changed
+  default → major. One change may add several entries; they share its bump.
+  `[Unreleased]` is the heading an entry is drafted under, **not a place entries
+  accumulate**: it does not survive a verified user-facing commit. Committing the entry
+  without the bump is the same unfinished state as committing it without a green suite —
+  the version drifting behind the history is not a follow-up task, it is the change not
+  being done.
 * The lint mechanics (flat config scope, `--fix` vs guard anchors, vendored-file ignores,
   override rules) and the full commit/CHANGELOG conventions: `CONTRIBUTING.md` §4.
 

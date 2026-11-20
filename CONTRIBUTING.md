@@ -258,14 +258,19 @@ The convention in one paragraph: the paired matrix is the unit of proof; every c
   touched.
 * The repository is on GitHub (`origin`, branch `main`). One commit per completed change,
   made as soon as the change is verified (see `AGENTS.md` §9 for what "verified" means);
-  do not batch unrelated work. Message: `type: imperative summary` (`fix:`, `perf:`,
-  `test:`, `docs:`, `refactor:`, `chore:`), subject ≤ 72 chars. The body explains **why**,
-  not what — the diff shows what. Include the measurement that justified a performance
-  claim and the node source or probe that justified a parity claim.
+  do not batch unrelated work. Message: `type: imperative summary` (`feat:`, `fix:`,
+  `perf:`, `test:`, `docs:`, `refactor:`, `chore:`), subject ≤ 72 chars. The body explains
+  **why**, not what — the diff shows what. Include the measurement that justified a
+  performance claim and the node source or probe that justified a parity claim.
 * `CHANGELOG.md` is the user-facing history, reverse chronological, Keep-a-Changelog
   style:
-  * a new `## [Unreleased]` section is where entries land; promote it to a version heading
-    (with the date) when the version in `package.json` is bumped;
+  * entries are drafted under `## [Unreleased]`, and **the commit that adds one also cuts
+    it into a release**: rename the heading to `## [X.Y.Z] - <date>` and bump
+    `package.json` plus both version fields in `package-lock.json` (the top-level one and
+    `packages[""]`). The bump is not a separate later step and not conditional on some
+    other release event — an entry committed without it is an unfinished change
+    (`AGENTS.md` §9). New public surface → minor, fixes and parity work only → patch, a
+    removed or renamed export or a changed default → major;
   * sections `Added` / `Changed` / `Fixed` / `Measured`;
   * record anything observable from outside: new API surface, changed event order, changed
     limit, changed wire behaviour, a performance result **with its paired numbers and its

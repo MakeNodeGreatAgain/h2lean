@@ -3,6 +3,50 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.5.1] - 2026-11-20
+
+### Fixed
+
+- **`client.settings()` takes a settings object, as `node:http2` does.** It previously
+  called `Buffer.from(payload)`, i.e. it expected a raw SETTINGS payload, so drop-in code
+  calling `session.settings({headerTableSize: 4096})` failed with `ERR_INVALID_ARG_TYPE`.
+  The method now mirrors node's `settings()` -> `submitSettings()` -> `settingsCallback()`
+  (`internal/http2/core.js`), measured against a live node client through a raw
+  frame-decoding peer:
+  - only the entries the caller named go on the wire, in ascending setting-id order
+    rather than the object's key order;
+  - the argument checks are node's: `undefined` is legal and submits an empty SETTINGS
+    frame, a `Buffer` passes and submits nothing, `null`/a string/an array are
+    `ERR_INVALID_ARG_TYPE`, and an out-of-range or wrongly-typed value is
+    `ERR_HTTP2_INVALID_SETTING_VALUE` (a `TypeError` carrying `.actual`, plus `.min`/`.max`
+    for a range check) -- not `ERR_OUT_OF_RANGE`. A non-function truthy callback is
+    `ERR_INVALID_ARG_TYPE`;
+  - `maxHeaderSize` is honoured as the deprecated alias of `maxHeaderListSize`, with
+    node's warning when the two differ;
+  - the callback is deferred to the matching `SETTINGS|ACK` and receives
+    `(null, localSettings, duration)`, and `'localSettings'` is emitted on every ACK --
+    including the one for the connection's own first SETTINGS frame, which has no
+    callback. A submitted value reaches `localSettings` when its own ACK arrives, not at
+    submit time (measured for all seven settings: `headerTableSize: 8192` produced events
+    `[4096, 8192]`);
+  - `duration` is node's monotonic-clock reading in milliseconds, not an elapsed time
+    (measured: a submit 120 ms earlier answered with `524545981.423` where
+    `Number(process.hrtime.bigint())/1e6` read `524545981.445`);
+  - a call made while connecting is deferred to `'connect'` instead of being refused;
+  - ten unacked SETTINGS frames are the limit, counting the connection's own first one:
+    the next submit sends nothing and destroys the session with
+    `ERR_HTTP2_MAX_PENDING_SETTINGS_ACK`, as node does.
+- **`client.localSettings` reports the eight keys node reports**, in `getSettings()`'s
+  order, with `maxHeaderListSize` and its alias `maxHeaderSize` at `4294967295` -- what
+  nghttp2 has in effect on a live client, not the `65535` `getDefaultSettings()` prints.
+  The client enforces no inbound header-list bound, so this changes the reported object
+  (the one the `settings()` callback hands out), not a guard or the wire.
+
+  Known gap, stated in the `lib/client-session.js` header: node also accepts a
+  `customSettings` object of raw id/value pairs and submits those entries; h2lean submits
+  the seven standard settings only. `test/client/client-settings-call.test.js` pins every
+  rule above differentially against `node:http2`.
+
 ## [0.5.0] - 2026-11-20
 
 ### Added
