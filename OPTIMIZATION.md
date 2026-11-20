@@ -442,7 +442,20 @@ side.
     limitation `lib/compat.js` documents for `req.pause()`); (b) node's `ClientHttp2Stream` is
     ALSO a Duplex, so h2lean's client is at PARITY here, not behind — hand-rolling would be a
     speculative beat-node win on the flowing path, not a regression fix, and the end-to-end
-    client share is item 30 / `bench/client`, of which these ~1–6 µs are a fraction. The honest
-    route, if pursued, is a hand-rolled Readable reproducing the full surface, gated on a paired
-    end-to-end client matrix (AGENTS.md §7) — not a base-class swap. The server took the cheap
-    win (item 41: bare base, now `pipe()` via `Stream`); the client has no equivalent free win.
+    client share is item 30 / `bench/client`, of which these ~1–6 µs are a fraction. The gate
+    AGENTS.md §7 demands was then run — a hand-rolled flowing read path (synchronous
+    `emit('data')` when the consumer is already flowing, the server's `_recvData` shape applied
+    to the client readable half), driven through the paired `bench/client` arms against the
+    untouched Duplex client and node in one session (nghttpd, 8×64 slots, ABBA ×3, median
+    `cpuPerReq`, node v26.12.1). The sync fast path was taken on every DATA delivery (670 788 of
+    670 788, zero push fallbacks), so the arm genuinely exercised the optimisation. End-to-end
+    it bought essentially nothing: 16 KiB 11.80 → 11.80 µs/req (−0.004, inside spread),
+    256 KiB 111.3 → 110.2 (+1.10 µs, ~1%). The isolated micro's 1.6–5.8 µs intrinsic delta does
+    NOT survive into the real request — the nextTick flow loop it removes overlaps with the
+    socket-read batch, HPACK decode and framing that item 30 shows actually drive the client
+    `cpuPerReq`; the micro inflates the machinery's share precisely by stripping that context.
+    And even the ~1% is only the bare sync path, which does not reproduce consumer
+    backpressure or mode-switching — the full-surface Readable that contract demands costs more
+    back (the read/pipe/await prices above). So the route is closed, not merely gated: the
+    server took the cheap win (item 41: bare base, now `pipe()` via `Stream`); the client has
+    no equivalent free win, and the expensive one is worth ~0–1%. The client stays a Duplex.

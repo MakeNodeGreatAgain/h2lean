@@ -16,18 +16,19 @@
 // the above-default values (`512`, `Infinity`) that accept everything the flood can send.
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
 const { ORIGIN_SET_CAP } = require('../node-version');
+const certificates = require('../fixtures-tls');
 
 // The cap is a node 24+ feature; before that connect() ignores maxOriginSetSize and
 // onOrigin adds unconditionally, so the whole scenario has no reference verdict to pin.
 const SKIP = ORIGIN_SET_CAP ? false : 'maxOriginSetSize absent before node 24 (test/node-version.js)';
 
-const TLS_KEY = fs.readFileSync(path.join(__dirname, '..', '..', 'out', 'test-key.pem'));
-const TLS_CERT = fs.readFileSync(path.join(__dirname, '..', '..', 'out', 'test-cert.pem'));
+// The self-signed pair through the generator, not a raw read of out/*.pem: the fixture is
+// gitignored and empty on a fresh checkout, and this module loads its TLS server even when
+// the case below is skipped (the majors that skip it still crash on a direct readFileSync).
+const { key: TLS_KEY, cert: TLS_CERT } = certificates();
 
 // 10 fresh origins per frame, every 10 ms, until the session dies — upstream's shape. The
 // interval is cleared on session close so no timer outlives the case.

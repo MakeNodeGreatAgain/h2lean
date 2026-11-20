@@ -19,14 +19,16 @@
 //     exercised here -- the probe cannot see node's process abort and still continue.
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
 const http2 = require('node:http2');
 const h2lean = require('../index');
 const { ORIGIN_SET_CAP } = require('./node-version');
+const certificates = require('./fixtures-tls');
 
-const TLS_KEY = fs.readFileSync(path.join(__dirname, '..', 'out', 'test-key.pem'));
-const TLS_CERT = fs.readFileSync(path.join(__dirname, '..', 'out', 'test-cert.pem'));
+// The self-signed pair through the generator, not a raw read of out/*.pem: on a fresh
+// checkout out/ is empty and the two files exist only once fixtures-tls has run (they are
+// gitignored). A direct readFileSync here threw ENOENT on the CI matrix for the majors where
+// no earlier test had generated the pair yet.
+const { key: TLS_KEY, cert: TLS_CERT } = certificates();
 
 // -- argument validation parity --------------------------------------------
 
