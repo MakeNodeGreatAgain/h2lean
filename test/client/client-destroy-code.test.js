@@ -38,9 +38,11 @@
 //     stream's rstCode is 0 / 2 / 8 / 1 for destroy(), destroy(err), destroy(8) and
 //     destroy(err, 1), and its error is the session's.
 //
-// KNOWN DIVERGENCE, not pinned here: node's session.destroy() also submits
-// GOAWAY(last=0, code) and h2lean's does not, so the session-destroy cases compare the
-// stream's code and error, not the wire. And a non-zero inbound GOAWAY destroys node's
+// The session-destroy cases here compare the stream's code and error, not the wire; the
+// GOAWAY(last=0, code) and the N-1 resets a destroy also submits are pinned by
+// test/client/client-destroy-goaway.test.js.
+//
+// KNOWN DIVERGENCE, not pinned here: a non-zero inbound GOAWAY destroys node's
 // session at once (onGoawayData, core.js:781: destroy(ERR_HTTP2_SESSION_ERROR(code),
 // NO_ERROR)) while h2lean leaves it open, so a stream destroyed after one reports the
 // caller's error and frames a reset where node reports ERR_HTTP2_SESSION_ERROR and

@@ -3,6 +3,29 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.5.4] - 2026-11-20
+
+### Fixed
+
+- **`client.destroy()` says goodbye on the wire.** The staged outbound batch was dropped
+  outright, so a peer saw a bare socket close where node's `closeSession` terminates the
+  nghttp2 session with the derived code (`core.js:1265`) and leaves
+  `GOAWAY(last=0, code)` behind. Measured on a live node client against a raw
+  frame-decoding peer and now matched:
+  - `destroy()`, `destroy(err)`, `destroy(8)` and `destroy(err, 1)` frame
+    `GOAWAY(0, 0 / 2 / 8 / 1)` respectively, with no streams open as well;
+  - the goodbye is submitted even after a graceful `close()` already sent one -- node
+    emits two `GOAWAY` frames in that order, the second carrying the destroy's code;
+  - every open stream **but the last** is reset with the session's code first: N open
+    streams produce N-1 `RST_STREAM` frames in ascending id order, then the `GOAWAY`.
+    Verified for one to four open streams and codes 0, 2 and 8, and a stream the
+    application destroyed beforehand is not counted. Why the last stream is exempt lives
+    in the C++ layer, which was not read; the rule implemented here is the measurement;
+  - nothing goes out before the handshake completes, and the batch reaches the socket
+    ahead of the FIN the way `_fatal`'s goodbye does.
+  Pinned by `test/client/client-destroy-goaway.test.js`. This closes the first of the two
+  gaps recorded under 0.5.3; the non-zero inbound `GOAWAY` gap remains open.
+
 ## [0.5.3] - 2026-11-20
 
 ### Fixed
