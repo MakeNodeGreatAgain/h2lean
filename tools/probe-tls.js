@@ -1,12 +1,10 @@
 // What node's createSecureServer actually does, so h2lean can match it: the ALPN
 // decision, session.encrypted, and the class shape. Run against node only.
 'use strict';
-const fs = require('node:fs');
 const tls = require('node:tls');
 const http2 = require('node:http2');
-
-const key = fs.readFileSync(`${__dirname}/../out/test-key.pem`);
-const cert = fs.readFileSync(`${__dirname}/../out/test-cert.pem`);
+const { key, cert } = require('../test/fixtures-tls')(); // never read out/*.pem raw:
+// the fixture pair is per process now, see the concurrency note in that file.
 
 const srv = http2.createSecureServer({ key, cert });
 console.log('instanceof tls.Server:', srv instanceof tls.Server);

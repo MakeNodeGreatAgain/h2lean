@@ -29,6 +29,7 @@ Up to **8× less CPU per request** and **6.8× more requests per second** than `
   - [Secure server (h2s / TLS)](#secure-server-h2s--tls)
   - [Client — `connect()`](#client--connect)
   - [Fastify and other frameworks](#fastify-and-other-frameworks)
+  - [h2lean as the HTTP/2 client of an undici `fetch`](#h2lean-as-the-http2-client-of-an-undici-fetch)
   - [Monkey-patching for frameworks without injection](#monkey-patching-for-frameworks-without-injection)
 - 🛠️ [Advanced Tuning](#️-advanced-tuning)
 - 🔒 [Security](#-security)
@@ -195,6 +196,43 @@ const fastify = Fastify({
 fastify.get('/', async () => ({ hello: 'from h2lean under Fastify' }));
 fastify.listen({ port: 8080 });
 ```
+
+### h2lean as the HTTP/2 client of an undici `fetch`
+
+`connect()` is the client surface, but an application rarely calls it — it calls `fetch` or `undici.request` and never sees the transport. Monkey-patching `node:http2` is one way to put h2lean there; the cleaner way is undici's own seam: **every** request above undici's API funnels through one method, `Dispatcher#dispatch(options, handler)`. Subclass `Dispatcher`, answer that method with `h2lean.connect()`, and `request()`, `fetch()`, `pipeline()`, an `Agent` or a `RetryAgent` on top all run on h2lean's HTTP/2 — frame parsing, HPACK and flow control are ours, undici's machinery untouched. No global patch, and the choice is per call site:
+
+```javascript
+const h2lean = require('h2lean');
+const { Dispatcher, fetch } = require('undici');
+
+class H2leanDispatcher extends Dispatcher {
+  // The single seam. `handler` is undici's (onRequestStart, onResponseStart,
+  // onResponseData, onResponseEnd, onResponseError); the controller handed to it
+  // is ours — pause()/resume() is undici's backpressure (it becomes flow-control
+  // credit) and abort() is an AbortSignal (it becomes RST_STREAM).
+  dispatch (options, handler) {
+    const stream = this.sessionFor(new URL(options.origin)) // one h2lean session per origin
+      .request(/* ':method', ':path', ':scheme', ':authority', then the fields */);
+    // ... five stream events forwarded to the handler, the body written, return true
+  }
+}
+
+const res = await fetch('http://localhost:8080/', { dispatcher: new H2leanDispatcher() });
+```
+
+[`examples/undici-h2-client.js`](./examples/undici-h2-client.js) is the complete version — 268 lines, 56 of them comments — and its peer is node's **own** `node:http2` server, so every 200 is node's nghttp2 accepting what h2lean's client put on the wire. It covers the controller contract, `AbortSignal` → `RST_STREAM`, string/`Readable`/async-iterable request bodies, trailers, session reuse, and undici's `connect`/`disconnect` events:
+
+```
+event connect      -> http://127.0.0.1:52108
+undici.request GET -> 200 via node:http2 "hello from node:http2 (method=GET, x-test=kept)\n"
+fetch POST /echo   -> 200 "round trip"
+streaming POST     -> 200 "chunk-1:chunk-2:chunk-3" trailer {"x-checksum":"ok"}
+connections used   -> 1 socket, 3 streams
+cancel via signal  -> AbortError: This operation was aborted
+event disconnect   -> http://127.0.0.1:52108
+```
+
+undici also has its own HTTP/2 (`allowH2: true` on a `Client` over TLS, `H2CClient` over cleartext) — what it has no way to do is select somebody else's protocol engine, until you replace the `Dispatcher`. For the other direction, h2lean as the server speaking to a third-party client, the test suite and `npm run spec` are the interop gate.
 
 ### Monkey-patching for frameworks without injection
 
