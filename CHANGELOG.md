@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [Unreleased]
+
+### Measured
+
+- **The native-Duplex server stream question is settled with the true arm, not a
+  proxy** (`bench/micro/duplex-native-ab.js`, OPTIMIZATION.md item 41). A patched
+  copy of `lib/` (`duplex-native-variant.patch`, built and applied by the harness)
+  makes `Http2Stream extends Duplex` in node's native shape; three arms (lean EE /
+  native Duplex / node:http2), four cases, ABCCBA x3, server cpuPerReq, SINK/req
+  verified equal. Medians lean -> duplex: GET 0 B 2.192 -> 3.383 us/req (x1.54),
+  GET 1 KB down 3.243 -> 3.891 (x1.20), POST 1 KB up 2.758 -> 3.993 (x1.45),
+  POST 16 KB up 9.130 -> 9.535 (x1.04); spreads 0.065-1.211 us. The +1.2 us on
+  small requests matches the three-arm micro's ~1.4 us intrinsic prediction, so
+  the EventEmitter design stands and the parity route stays a lazy shim, not
+  `extends Duplex`. No library change.
+
 ## [0.4.2] - 2026-11-19
 
 ### Added

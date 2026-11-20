@@ -372,7 +372,7 @@ side.
     strings straight into the caller's destination buffer (`dst.write(s, off, 'latin1')`),
     so adopting either intermediate form would be a measured regression. Check whether the
     code already writes into a destination before importing an allocator tip.
-41. **Making the server `Http2Stream` a node-style `stream.Duplex` adds ~1.4 µs/req of
+41. **Making the server `Http2Stream` a node-style `stream.Duplex` adds ~1.2–1.4 µs/req of
     intrinsic machinery — ×~1.5 on a small-body server baseline — measured, so it is not a
     free parity win.** node's `Http2Stream extends Stream.Duplex`; h2lean's server stream is
     a bare `EventEmitter` (`lib/stream.js`). `bench/micro/duplex-cost.js` measures the
@@ -383,18 +383,34 @@ side.
     intrinsic `native − lean` cost is ~1.4 µs/req at a 1-chunk body, ~1.7 µs at 16 KB, ~6.5 µs
     at 256 KB (128 `push`→nextTick→`read` round-trips). `wrapper` overstates it by ~0.5 µs of
     bridging listeners plus a second object — an earlier two-arm version of this probe read the
-    floor as ~2.0 µs and that was the bridge, not the Duplex. `duplex-server-ab.js` +
-    `duplex-server-arm.js` carry the `wrapper` end-to-end (a true `native` server arm needs the
-    change implemented first, so the proxy is what is measurable): one server process per arm
-    self-reporting `process.cpuUsage()` (load runs in the parent), both arms read the whole
-    upload body and answer 200, ABBA ≥3 rounds, median. Server `cpuPerReq`: +2.51 µs at a 1 KB
-    upload (2.86 → 5.37, ×1.88), +1.81 µs at 16 KB (9.22 → 11.03, ×1.20) — but ~0.5 µs of that
-    is the bridge, so a native re-parent lands nearer +1.5–2.0 µs, still ×1.5–1.7 on the
-    small-body baseline. Two caveats: the 1 KB arm ran 106 % busy (throughput fell, so the
-    delta is a floor); and a native base pays the ~1.4 µs construction on *every* stream,
-    headers-only included, so the cost of the change is ≥ the intrinsic number, never zero for
-    small responses. This is the paired measurement AGENTS.md §7 demands before the parity
-    could be called cost-neutral; the client-side share was already item 30. Because the cost
+    floor as ~2.0 µs and that was the bridge, not the Duplex. The `wrapper` end-to-end
+    (`duplex-server-ab.js` + `duplex-server-arm.js`) was an upper-bound proxy: +2.51 µs at a
+    1 KB upload (2.86 → 5.37, ×1.88), +1.81 µs at 16 KB (9.22 → 11.03, ×1.20), ~0.5 µs of it
+    the bridge. The true `native` server arm is now implemented and measured:
+    `duplex-native-ab.js` + `duplex-native-arm.js` build a patched copy of `lib/` from
+    `duplex-native-variant.patch` (`Http2Stream extends Duplex` in node's native shape —
+    `push()` delivery, `_write`/`_final` response path; `git apply` refuses a tree the patch
+    no longer fits, the mutate-guards rule). Three arms — lean EE / native Duplex /
+    `node:http2` — four cases, ABCCBA ×3, one server process per arm self-reporting
+    `process.cpuUsage()` (load in the parent), SINK/req verified equal. Server `cpuPerReq`
+    medians (spread), lean → duplex: GET 0 B 2.192±0.150 → 3.383±0.225 (×1.54, +1.19 µs);
+    GET 1 KB down 3.243±0.208 → 3.891±0.065 (×1.20, +0.65 µs); POST 1 KB up 2.758±0.100 →
+    3.993±0.286 (×1.45, +1.24 µs); POST 16 KB up 9.130±0.181 → 9.535±1.211 (×1.04, +0.41 µs).
+    Paired node arm: 7.117 / 10.617 / 8.704 / 14.685 (the node/lean ratio here, ×3.2 on small
+    requests, is this harness's shape, not the standard matrix's — internally consistent,
+    not comparable across harnesses). The native delta lands inside the micro's prediction
+    and below the wrapper proxy: a per-frame profile attribution of the machinery reads
+    lower (~0.2 µs) because it inlines into its callers — the total-CPU A/B is the honest
+    price of the full cycle. Two documented simplifications in the variant, with bias
+    directions: credit released on arrival instead of consumption (favours duplex — a
+    production change would pay more), and `end()` split into `_write` + `_final(EMPTY/ES)`,
+    one extra empty DATA frame per response (against it). The variant is a measurement
+    vehicle, not a candidate: against the EE suite it fails 8 of 41 core tests (3 credit
+    pins, 5 event-order pins) — no invariant breach, but the pins exist for a reason. A
+    native base pays the construction on *every* stream, headers-only included, so the cost
+    of the change is ≥ the intrinsic number, never zero for small responses. This is the
+    paired measurement AGENTS.md §7 demands before the parity could be called cost-neutral;
+    the client-side share was already item 30. Because the cost
     sits in the Duplex *machinery* (the two state objects plus the nextTick flow loop) and not
     in its *API*, the honest route to the parity is a method/getter shim over the existing
     stream, or a lazy wrap only when a Duplex-only entry point is first touched — not

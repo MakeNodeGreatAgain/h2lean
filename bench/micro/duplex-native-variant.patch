@@ -1,0 +1,407 @@
+diff --git a/lib/stream.js b/lib/stream.js
+index c7a9580..ba1b77b 100644
+--- a/lib/stream.js
++++ b/lib/stream.js
+@@ -1,3 +1,15 @@
++// MEASUREMENT-ONLY VARIANT (built by bench/micro/duplex-native-ab.js): Http2Stream extends stream.Duplex in
++// node's native shape (core.js:2128 -- allowHalfOpen, decodeStrings:false,
++// autoDestroy:false), body delivered by push(), response through _write/_final.
++// Two deliberate simplifications versus the EE original, both documented so the
++// A/B number is read honestly:
++//  * inbound credit is released on ARRIVAL (in _recvData), not on consumption --
++//    the WINDOW_UPDATE work is identical, only its timing moves earlier;
++//  * end() becomes _write(chunk) + _final(EMPTY/ES): one extra empty DATA frame
++//    per response where the EE original folds END_STREAM into the last DATA.
++// Event-order pins of the EE suite are NOT expected to hold here; this arm exists
++// to price the Duplex machinery in the live server loop, not to ship.
++//
+ // Http2Stream equivalent: the object a request handler is handed.
+ //
+ // v1 deliberately implements the parts of the contract that can be honoured
+@@ -24,7 +36,7 @@
+ //     -- measured, and recorded in AGENTS.md section 10.
+ 'use strict';
+ 
+-const { EventEmitter } = require('node:events');
++const { Duplex } = require('node:stream');
+ const { deprecate } = require('node:util');
+ const frames = require('./frames');
+ const hdr = require('./headers');
+@@ -47,14 +59,6 @@ function emitErrorCloseNT(target, err) {
+   target.emit('close');
+ }
+ 
+-// 'end' and 'close' for a stream whose two halves finished in the same turn.
+-// They were already going to run in the same tick drain, so folding them into
+-// one callback only removes one TickObject per request.
+-function emitEndCloseNT(target) {
+-  target.emit('end');
+-  target.emit('close');
+-}
+-
+ // The scheduled half of the unread-request auto-close -- see _maybeAutoClose
+ // below for the rule and its measurement. The unread request half reports 'end'
+ // here, before the 'close' _destroy schedules behind it: node's trace for the
+@@ -73,9 +77,9 @@ const {
+   INTERNAL_ERROR
+ } = frames;
+ 
+-class Http2Stream extends EventEmitter {
++class Http2Stream extends Duplex {
+   constructor(session, id) {
+-    super();
++    super({ allowHalfOpen: true, decodeStrings: false, autoDestroy: false, emitClose: false });
+     this.id = id;
+     this.session = session;
+     this.rstCode = 0;
+@@ -101,9 +105,7 @@ class Http2Stream extends EventEmitter {
+     this._expLen = -1; // content-length promised by the request, -1 = nothing
+     this._bodyLen = 0; // ...octets of body actually received
+     this._queued = null; // Buffers waiting on window credit
+-    this._pending = null; // inbound chunks nobody has read yet
+-    this._endPending = false; // END_STREAM arrived with no reader
+-    this._consumeState = 0; // 0 no reader, 1 delivering, 2 reader is full
++    this._didRead = false; // _read ran: the readable side was touched (node's didRead)
+     this._endQueued = false;
+     this._gracefulClose = false; // both halves closed on their own terms (_closeNow)
+     this._waitForTrailers = false;
+@@ -185,102 +187,35 @@ class Http2Stream extends EventEmitter {
+     return this;
+   }
+ 
+-  write(chunk, encoding, cb) {
+-    if (typeof encoding === 'function') {
+-      cb = encoding; encoding = undefined;
+-    }
+-    // The response starts itself if the application never called respond(). Node does this on
+-    // the first WRITE of a server stream, not on the first end(): measured, `write('x')` alone
+-    // puts HEADERS{:status 200} on the wire ahead of the DATA. Doing it here as well is what
+-    // keeps DATA from arriving on a stream that has no response headers yet -- a peer that sees
+-    // DATA first has nothing to attach it to, and nghttp2 answers that with a stream error.
+-    // The started response may itself end the writable (a HEAD request, see respond()),
+-    // so the after-end check below runs after this, not before.
+-    if (!this.headersSent && !this._endQueued && this._state.localClose !== 1) {
+-      this.respond({ ':status': 200 });
+-    }
++  // Native writable cycle: Duplex's write()/end() run the machinery and call these.
++  _write(chunk, encoding, cb) {
+     if (this._endQueued || this._state.localClose === 1) {
+-      // node: Writable's _write answers ERR_STREAM_WRITE_AFTER_END ("write after
+-      // end") through the callback and errorOrDestroy -- which emits 'error' and
+-      // destroys a LIVE stream, but is a no-op on one already destroyed
+-      // (internal/streams/writable.js; measured v26.12.1, pinned by
+-      // test/upstream-push.test.js, session-destroy).
+-      const err = errorOf('ERR_STREAM_WRITE_AFTER_END', 'write after end');
+-      if (cb) {
+-        process.nextTick(cb, err);
+-      }
+-      if (!this._destroyed) {
+-        this.destroy(err);
+-      } else if (this._gracefulClose) {
+-        // node's close is asynchronous, so a write in the same turn as the
+-        // respond()/end() that finished the stream still hits a LIVE writable:
+-        // errorOrDestroy emits 'error' (measured on live node: the HEAD-push shape,
+-        // respond() then write()). h2lean closes synchronously, so
+-        // the event is owed here instead. A reset or a session destroy is not
+-        // this shape -- there node's errorOrDestroy is a no-op and no 'error'
+-        // goes out (the session-destroy case of test/upstream-push.test.js).
+-        process.nextTick(emitNT, this, 'error', err);
+-      }
+-      return false;
++      cb(errorOf('ERR_STREAM_WRITE_AFTER_END', 'write after end'));
++      return;
+     }
+-    const buf = typeof chunk === 'string' ? Buffer.from(chunk, encoding || 'utf8') : chunk;
+-    const canContinue = this.session.sendData(this, buf, false);
+-    if (cb) {
+-      process.nextTick(cb);
++    if (!this.headersSent) {
++      this.respond({ ':status': 200 });
+     }
+-    return canContinue;
++    const buf = typeof chunk === 'string' ? Buffer.from(chunk, encoding || 'utf8') : chunk;
++    this.session.sendData(this, buf, false);
++    process.nextTick(cb);
+   }
+ 
+-  end(chunk, encoding, cb) {
+-    if (typeof chunk === 'function') {
+-      cb = chunk; chunk = null;
+-    } else if (typeof encoding === 'function') {
+-      cb = encoding; encoding = null;
+-    }
++  _final(cb) {
+     if (this._endQueued || this._state.localClose === 1) {
+-      // node: Writable.end() on an ended writable is a no-op that still answers
+-      // the callback (internal/streams/writable.js end() -> writableEnded checks;
+-      // measured v26.12.1: respond() on a HEAD request ends the writable itself,
+-      // and the application's end() after it neither errors nor destroys).
+-      // write() after end IS the error -- see write() above.
+-      if (cb) {
+-        process.nextTick(cb);
+-      }
+-      return this;
++      process.nextTick(cb);
++      return;
+     }
+     if (!this.headersSent) {
+-      // A body takes the auto-respond of write() above; an empty end() is where h2lean and node
+-      // part company, and the split is written down in AGENTS.md section 10: node puts NOTHING on
+-      // the wire for `end()` before respond() -- no HEADERS, no DATA, no END_STREAM, and
+-      // headersSent stays false -- while h2lean answers a plain 200 rather than leave a stream
+-      // that no peer will ever see an answer on.
+       this.respond({ ':status': 200 });
+     }
+-    if (this._state.localClose === 1) {
+-      // the auto-respond above already carried END_STREAM (a HEAD request):
+-      // there is no body to send, RFC 9113 8.1 forbids one on a HEAD answer
+-      if (cb) {
+-        process.nextTick(cb);
+-      }
+-      return this;
+-    }
+-    const buf = chunk == null ? EMPTY : (typeof chunk === 'string'
+-      ? Buffer.from(chunk, encoding || 'utf8') : chunk);
+-    // A stream that still owes a trailer block must not close the stream with its body.
+-    // RFC 9113 6.1 puts a trailing HEADERS before END_STREAM, and node's frame sequence
+-    // shows the placement: HEADERS/EH DATA HEADERS/ES/EH for a body, and no DATA at all
+-    // for an empty one -- where h2lean used to send DATA/ES first and then a trailer block
+-    // that no peer could still read. The application-level half-close happens here (that
+-    // is what emits 'wantTrailers'), the wire-level one happens in sendTrailers().
+-    const oweTrailers = this._waitForTrailers;
+-    this.session.sendData(this, buf, !oweTrailers);
+-    if (oweTrailers) {
++    if (this._waitForTrailers) {
++      // the body went out through _write; the trailer block owes END_STREAM
+       this._endLocalSide();
++    } else {
++      this.session.sendData(this, EMPTY, true);
+     }
+-    if (cb) {
+-      process.nextTick(cb);
+-    }
+-    return this;
++    process.nextTick(cb);
+   }
+ 
+   sendTrailers(trailers) {
+@@ -449,21 +384,14 @@ class Http2Stream extends EventEmitter {
+     process.nextTick(callback, null, stream, h, 0);
+   }
+ 
+-  // Readable-side control, node's contract: while paused no credit is released,
+-  // so the sender is the one that waits, and whatever arrives in the meantime is
+-  // buffered and replayed on resume(). Returns this, like the Duplex does.
+-  pause() {
+-    this._pauseConsuming();
+-    return this;
+-  }
+-
+-  resume() {
+-    this._startConsuming();
+-    return this;
++  // Readable-side control is Duplex's own pause()/resume()/isPaused(); the compat
++  // layer's internal hooks delegate to them.
++  _pauseConsuming() {
++    this.pause();
+   }
+ 
+-  isPaused() {
+-    return this._consumeState === 2;
++  _startConsuming() {
++    this.resume();
+   }
+ 
+   // node maps a per-stream timeout onto the connection's idle timeout.
+@@ -495,24 +423,16 @@ class Http2Stream extends EventEmitter {
+     }
+     this._state.remoteClose = 1;
+     this.endAfterHeaders = true;
+-    // the readable side is done: 'end' after the last 'data', like a Readable.
+-    // No auto-destroy: the application still has to answer. node keeps the
+-    // writable side of an unanswered request open as well.
++    // EOF rides the native readable: push(null) now, 'end' when the buffer drains.
++    this.push(null);
+     if (this._state.localClose === 1) {
+       this._closeNow();
+-      process.nextTick(emitEndCloseNT, this);
++      process.nextTick(emitNT, this, 'close');
+       return;
+     }
+     if (this._state.state === ST_OPEN) {
+       this._state.state = ST_HALF_CLOSED_REMOTE;
+     }
+-    if (!this._isConsuming()) {
+-      // Nothing has read the buffered bytes yet, so 'end' must not overtake them:
+-      // a reader that attaches later is owed the whole sequence, EOF included.
+-      this._endPending = true;
+-      return;
+-    }
+-    process.nextTick(emitNT, this, 'end');
+   }
+ 
+   _endLocalSide() {
+@@ -555,12 +475,12 @@ class Http2Stream extends EventEmitter {
+   // ended never gets one. Without it a peer that sends HEADERS without END_STREAM
+   // and no DATA holds a stream and a _liveStreams slot until the idle timeout,
+   // and a closing session waits for it forever (AGENTS.md 10, item 2).
+-  // `_consumeState === 0` is this file's reading of `!didRead && flowing ===
++  // `_didRead || flowing !== null` is this file's reading of `!didRead && flowing ===
+   // null`: no reader attached and no pause()/resume() called -- either has
+   // touched the request, and node stops there too.
+   _maybeAutoClose() {
+     if (this._destroyed || !this.headersSent || this._waitForTrailers ||
+-        this._consumeState !== 0) {
++        this._didRead || this._readableState.flowing !== null) {
+       return;
+     }
+     // node's own deferral: the RST goes out a turn after the response, and the
+@@ -574,18 +494,8 @@ class Http2Stream extends EventEmitter {
+       return;
+     }
+     this._closeNow();
+-    // An EOF that arrived while nobody was reading is still owed to the application, and it
+-    // goes out before 'close' -- the same pair the both-halves-in-one-turn path above uses.
+-    // Without this the stream simply never reported 'end' for a request that ended on its
+-    // HEADERS frame (END_STREAM on HEADERS is every GET): _remoteEnded() had parked the EOF
+-    // in _endPending for a reader that never appeared, and the local close below was the last
+-    // event the stream ever produced. Measured against node on exactly that shape: it emits
+-    // stream.end then stream.close (test/event-order.test.js, scenario eof).
+-    if (this._endPending) {
+-      this._endPending = false;
+-      process.nextTick(emitEndCloseNT, this);
+-      return;
+-    }
++    // 'end' is owed by the native readable (push(null) in _remoteEnded); only
++    // 'close' is scheduled here.
+     process.nextTick(emitNT, this, 'close');
+   }
+ 
+@@ -593,7 +503,6 @@ class Http2Stream extends EventEmitter {
+     this._state.state = ST_CLOSED;
+     this._destroyed = true;
+     this._gracefulClose = true;
+-    this._pending = null;
+     this.session._dropStream(this, false);
+     // node drops the session reference when the stream dies
+     // (Http2Stream._destroy: `this[kSession] = undefined`, internal/http2/core.js:2546).
+@@ -618,7 +527,7 @@ class Http2Stream extends EventEmitter {
+     if (sendRst && this.session._open) {
+       this.session.sendRst(this.id, code, reason);
+     }
+-    this._pending = null;
++    this.push(null);
+     this.session._dropStream(this, true);
+     // The event is emitted synchronously -- before the 'end' that an already-queued
+     // tick would otherwise deliver first. Marking the remote half closed keeps a
+@@ -665,61 +574,10 @@ class Http2Stream extends EventEmitter {
+   }
+ 
+   // --- inbound flow control ----------------------------------------------------
+-  // Attaching a reader is how the application says "send me the body": replay
+-  // whatever arrived before it did. attach after super.on(), or the replay would
+-  // emit into an empty listener list. once()/addListener are covered by the
+-  // listenerCount() check at delivery time.
+-  on(name, fn) {
+-    const r = super.on(name, fn);
+-    if (name === 'data' || name === 'readable') {
+-      this._startConsuming();
+-    }
+-    return r;
+-  }
+-
+-  once(name, fn) {
+-    const r = super.once(name, fn);
+-    if (name === 'data' || name === 'readable') {
+-      this._startConsuming();
+-    }
+-    return r;
+-  }
+-
+-  // Credit goes back when the application takes the bytes, so a body nobody
+-  // reads closes the sender's window instead of growing our heap. The buffer of
+-  // unread chunks cannot exceed the window we advertised, because the peer is
+-  // not allowed to send more than that without a credit we never gave.
+-  _isConsuming() {
+-    if (this._consumeState === 2) {
+-      return false;
+-    } // the reader asked us to stop
+-    return this._consumeState === 1 || this.listenerCount('data') > 0 ||
+-           this.listenerCount('readable') > 0;
+-  }
+-
+-  // Called when a reader shows up: replay what was buffered, in order, and let
+-  // later frames through directly.
+-  _startConsuming() {
+-    this._consumeState = 1;
+-    const pending = this._pending;
+-    if (pending !== null) {
+-      this._pending = null;
+-      for (let i = 0; i < pending.length; i++) {
+-        const chunk = pending[i];
+-        this._release(chunk.length);
+-        this.emit('data', chunk);
+-      }
+-    }
+-    if (this._endPending && !this._destroyed) {
+-      this._endPending = false;
+-      process.nextTick(emitNT, this, 'end');
+-    }
+-  }
+-
+-  // Internal pause, used by the compat layer when its Readable is full. There is
+-  // no public pause()/resume() yet, and this is the only reason it exists.
+-  _pauseConsuming() {
+-    this._consumeState = 2;
++  // The native readable buffers, replays and flows; _read only records that the
++  // application touched the request side (node's didRead, the auto-close boundary).
++  _read() {
++    this._didRead = true;
+   }
+ 
+   _release(n) {
+@@ -730,21 +588,13 @@ class Http2Stream extends EventEmitter {
+ 
+   _recvData(buf) {
+     const n = buf.length;
+-    if (n === 0) {
++    if (n === 0 || this._destroyed) {
+       return;
+     } // an empty DATA frame carries no payload
+     this._recvUsed += n;
+-    if (this._isConsuming()) {
+-      this._release(n);
+-      this.emit('data', buf);
+-      return;
+-    }
+-    // the chunk is either a view of a socket read or a buffer built for this frame
+-    // alone; both outlive the tick, so it can simply be queued
+-    if (this._pending === null) {
+-      this._pending = [];
+-    }
+-    this._pending.push(buf);
++    // measurement simplification: credit on arrival, not on consumption
++    this._release(n);
++    this.push(buf);
+   }
+ }
+ 
+diff --git a/lib/compat.js b/lib/compat.js
+index 740c3bc..695abb9 100644
+--- a/lib/compat.js
++++ b/lib/compat.js
+@@ -363,10 +363,10 @@ class Http2ServerRequest extends Readable {
+     }
+     this._didRead = true;
+     const stream = this._stream;
+-    // an 'end' that was deferred because nobody was reading is owed to us by the
+-    // replay below; anything else means EOF already happened and there is
+-    // nothing left to fetch
+-    const owedEnd = stream._endPending;
++    // an 'end' the native readable still owes (EOF pushed, not yet emitted) is
++    // delivered by the replay below; anything else means EOF already happened
++    // and there is nothing left to fetch
++    const owedEnd = stream._readableState.ended && !stream._readableState.endEmitted;
+     if (stream.listenerCount('data') === 0) {
+       stream.on('data', onRequestData);
+     } else {
