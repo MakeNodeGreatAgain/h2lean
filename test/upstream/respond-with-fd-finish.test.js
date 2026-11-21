@@ -22,10 +22,12 @@
 // The abort shape also differs on the wire in a way that is already this project's
 // documented divergence (the queued-HEADERS discard on a same-turn destroy): node 26 drops
 // the response it had queued in the turn and the client sees no 'response' event at all,
-// while 20/22/24 all send the queued HEADERS (measured) and 26 is the outlier -- h2lean's
-// HEADERS were framed inside the call and reach the peer on every version. The node-side
-// expectation is gated on that boundary (test/node-version.js
-// SAME_TURN_HEADERS_DISCARDED). The stream-side and
+// while h2lean's HEADERS were framed inside the call and reach the peer on every version.
+// Below 26 the verdict is not a rule: 20/22/24 delivered it in the measured local runs
+// and 22 discarded it once on the CI runner -- nghttp2's write-batch timing, the same
+// load race AGENTS.md 10 records for this family, so the node arm's 'response' is printed
+// and not pinned below the gate (test/node-version.js SAME_TURN_HEADERS_DISCARDED).
+// The stream-side and
 // compat-side transcripts are pinned per stack; what is pinned on both is the writable
 // semantics this file exists for: no 'finish', no 'aborted', 'close' with
 // writableFinished false.
@@ -126,17 +128,24 @@ test('upstream: an aborted file pipe reports no finish and no aborted', async ()
   const leanGot = await arm(h2lean, true);
   // The stream-side and compat-side semantics are the shared claim; the client's view of
   // the response is the queued-HEADERS divergence (see the header): node 26 discards the
-  // response queued in the same turn, 20/22/24 send it, and h2lean delivers the HEADERS it
-  // framed in the call on every version.
+  // response queued in the same turn, and h2lean delivers the HEADERS it framed in the
+  // call on every version. Below 26 both verdicts have been measured -- delivered in the
+  // local runs, discarded once on the CI runner on 22 -- so there is no value to pin the
+  // node arm to and only the rest of its transcript is checked.
   const want = {
     stream: ['close'],
     res: ['finish', 'close'],
     streamErrorWf: false,
     bodyLength: 0
   };
-  assert.deepStrictEqual(nodeGot,
-    { ...want, response: !SAME_TURN_HEADERS_DISCARDED },
-    `node: ${JSON.stringify(nodeGot)}`);
+  if (SAME_TURN_HEADERS_DISCARDED) {
+    assert.deepStrictEqual(nodeGot, { ...want, response: false },
+      `node: ${JSON.stringify(nodeGot)}`);
+  } else {
+    const nodeRest = { ...nodeGot };
+    delete nodeRest.response;
+    assert.deepStrictEqual(nodeRest, want, `node: ${JSON.stringify(nodeGot)}`);
+  }
   assert.deepStrictEqual(leanGot, { ...want, response: true },
     `h2lean: ${JSON.stringify(leanGot)}`);
 });

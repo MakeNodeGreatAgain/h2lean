@@ -42,8 +42,10 @@ const STREAM_HWM_64K = NODE_MAJOR >= 22;
 const WINDOW_OVERFLOW_FATAL = NODE_MAJOR >= 24;
 // The queued-HEADERS discard on a same-turn destroy (AGENTS.md 10): node 26 discards a
 // response started and destroyed in one turn of the loop and only the RST_STREAM leaves;
-// 20.19.5, 22.21.1 and 24.22.3 all send the queued HEADERS. h2lean frames the HEADERS in
-// the call and always delivers them, so only the node-side expectation is gated.
+// below 26 there is no verdict to pin: 20.19.5, 22.21.1 and 24.22.3 sent the queued HEADERS
+// in the measured local runs and 22.21.1 discarded it once on a loaded CI runner (same
+// class as AGENTS.md 10's write-batch race), so the node arm only gets the discard pin at
+// the gate and no pin below it. h2lean frames the HEADERS in the call and always delivers.
 const SAME_TURN_HEADERS_DISCARDED = NODE_MAJOR >= 26;
 
 module.exports = {
