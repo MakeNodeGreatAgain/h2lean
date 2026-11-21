@@ -33,12 +33,11 @@
 // but not destroyed, and a later request is refused ERR_HTTP2_GOAWAY_SESSION. Both arms
 // agree on it.
 //
-// KNOWN DIVERGENCE, documented in lib/client-session.js and not pinned here: a NO_ERROR
-// GOAWAY whose lastStreamID is BELOW the open ids makes node refuse the unprocessed
-// streams itself -- rstCode 7, ERR_HTTP2_STREAM_ERROR naming NGHTTP2_REFUSED_STREAM, and
-// the session destroys once they are gone. h2lean does not refuse them: they stay open
-// with rstCode 0 until the connection goes. Pinning it would also pin node's second
-// GOAWAY(0,0) on that path, which is the separate graceful-close echo item.
+// The refusal branch of the NO_ERROR code is pinned too: a lastStreamID BELOW the open
+// ids makes node refuse the retired streams itself -- every locally-initiated stream
+// above lastStreamID closes with NGHTTP2_REFUSED_STREAM, rstCode 7, ERR_HTTP2_STREAM_ERROR
+// naming it, with no session-level error -- and the graceful close completes once the
+// last of them is gone. A mark above the open ids refuses nothing (the control below).
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
@@ -282,4 +281,34 @@ test('a NO_ERROR GOAWAY that covers the open streams leaves them alive', async (
   assert.deepStrictEqual(native, nodeWant(want, 'ERR_HTTP2_GOAWAY_SESSION'), 'node');
   const ours = await transcript(h2lean, opts);
   assert.deepStrictEqual(ours, want, 'NO_ERROR control');
+});
+
+test('a NO_ERROR GOAWAY below the open ids refuses those streams', async () => {
+  // nghttp2's rule, measured on a live node v26.12.1 client with two unanswered
+  // requests and GOAWAY(NO_ERROR, last=0): the streams above the mark are refused,
+  // NEWEST id first -- the reverse of the non-zero destroy's ascending order -- each
+  // with ERR_HTTP2_STREAM_ERROR naming NGHTTP2_REFUSED_STREAM, close rstCode 7 and
+  // NO session error: the refusal is not an error condition on either side. The wire
+  // carries a second GOAWAY(0,0): the refusal empties the session and the goodbye
+  // lands on top of it. With every stream gone, close() completes and the session
+  // closes for good, where the last=5 control above leaves it closed-but-pending.
+  const refused = 'ERR_HTTP2_STREAM_ERROR/Stream closed with error code NGHTTP2_REFUSED_STREAM';
+  const want = {
+    wire: ['HEADERS(1)', 'HEADERS(3)', 'GOAWAY(0,0)', 'GOAWAY(0,0)'],
+    events: [
+      'goaway 0 0 undefined',
+      `req1 error ${refused}`, 'req1 close 7',
+      `req0 error ${refused}`, 'req0 close 7',
+      'session close'
+    ],
+    state: 'destroyed=true closed=true',
+    streams: ['7/true', '7/true'],
+    late: ['accepted', 'error ERR_HTTP2_INVALID_SESSION/The session has been destroyed',
+      'close 2']
+  };
+  const opts = { code: 0, last: 0, count: 2 };
+  const native = await transcript(http2, opts);
+  assert.deepStrictEqual(native, nodeWant(want, 'ERR_HTTP2_INVALID_SESSION'), 'node');
+  const ours = await transcript(h2lean, opts);
+  assert.deepStrictEqual(ours, want, 'h2lean');
 });

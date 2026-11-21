@@ -218,19 +218,19 @@ test('the block cache does not swallow a dynamic table size update', () => {
   };
   let block;
   for (let i = 0; i < 3; i++) {
-    block = hdr.block(frozen, undefined, null, session);
+    block = hdr.block(frozen, null, session);
     decode(block);
   }
   const cached = session._blocks.get(frozen);
   assert.ok(cached, `a warm shape belongs in the cache, last block was ${block.length}B`);
   assert.notStrictEqual(cached.bytes[0] & 0xe0, 0x20, 'nothing to announce yet');
-  assert.strictEqual(hdr.block(frozen, undefined, null, session), cached.bytes,
+  assert.strictEqual(hdr.block(frozen, null, session), cached.bytes,
     'a hit is the cached Buffer itself');
 
   // The peer raises its advertised size above our cap: our table does not move, but the
   // size it assumes for it does, so the next block has to correct that.
   session._encoder.setPeerTableSize(8192);
-  const resized = hdr.block(frozen, undefined, null, session);
+  const resized = hdr.block(frozen, null, session);
   assert.strictEqual(resized[0] & 0xe0, 0x20, 'the size update went out with the block');
   assert.ok(resized.length > cached.bytes.length, 'and it is not part of the cached bytes');
   assert.strictEqual(session._encoder.pendingSize, null, 'announced once');
@@ -240,7 +240,7 @@ test('the block cache does not swallow a dynamic table size update', () => {
   // would not produce these fields.
   assert.deepStrictEqual(decode(resized), [':status', '200', 'x-kind', 'alpha']);
 
-  const again = hdr.block(frozen, undefined, null, session);
+  const again = hdr.block(frozen, null, session);
   assert.strictEqual(again, cached.bytes, 'and the cache is back, announcing nothing');
 });
 
@@ -283,7 +283,7 @@ test('a peer with no table room is never sent an insertion', () => {
   const frozen = Object.freeze({ ':status': 200, 'x-kind': 'alpha', 'x-again': 'beta' });
   let last;
   for (let i = 0; i < 5; i++) {
-    last = Buffer.from(hdr.block(frozen, undefined, null, session));
+    last = Buffer.from(hdr.block(frozen, null, session));
   }
   const enc = session._encoder;
   assert.strictEqual(enc.size, 0, 'our table stayed empty');

@@ -47,7 +47,7 @@ function measure(name, session, patch, iters) {
   let seq = 0;
   // warm up with the original encoder: the repeating lines get cached
   for (let i = 0; i < 2000; i++) {
-    block(makeHeaders(++seq), undefined, {}, session);
+    block(makeHeaders(++seq), {}, session);
   }
   if (patch) {
     if (typeof patch === 'function') {
@@ -58,7 +58,7 @@ function measure(name, session, patch, iters) {
   }
   const t0 = process.hrtime.bigint();
   for (let i = 0; i < iters; i++) {
-    block(makeHeaders(++seq), undefined, {}, session);
+    block(makeHeaders(++seq), {}, session);
     if (patch && patch.tick) {
       patch.tick(enc, i);
     }

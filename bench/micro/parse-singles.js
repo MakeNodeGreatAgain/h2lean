@@ -35,11 +35,11 @@ function bench(label, fn, n = 500_000) {
 }
 
 bench('parse(), strict on (default)', () => {
-  globalThis.sink = parse(RESP_HEADERS, undefined, { sendDate: false });
+  globalThis.sink = parse(RESP_HEADERS, { sendDate: false });
 });
 
 bench('parse(), strict off', () => {
-  globalThis.sink = parse(RESP_HEADERS, undefined,
+  globalThis.sink = parse(RESP_HEADERS,
     { sendDate: false, strict: false });
 });
 

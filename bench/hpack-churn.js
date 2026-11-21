@@ -41,13 +41,13 @@ for (const n of [1, 4, 16, 64, 256, 1024]) {
   // warm: every shape seen at least three times, so a stable workload is measured and
   // not the insertion path
   for (let w = 0; w < 3 * n; w++) {
-    hdr.block(set[w % n], undefined, null, s);
+    hdr.block(set[w % n], null, s);
   }
-  const bytes = hdr.block(set[0], undefined, null, s).length;
+  const bytes = hdr.block(set[0], null, s).length;
   const before = process.hrtime.bigint();
   let sink = 0;
   for (let r = 0; r < ROUNDS; r++) {
-    sink += hdr.block(set[r % n], undefined, null, s).length;
+    sink += hdr.block(set[r % n], null, s).length;
   }
   const ns = Number(process.hrtime.bigint() - before) / ROUNDS;
   console.log(`shapes=${String(n).padStart(4)}  ${ns.toFixed(0)} ns/req  `

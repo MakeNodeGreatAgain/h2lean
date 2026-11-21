@@ -15,7 +15,7 @@ const { parse } = require('../lib/headers');
 // The `date` field a response would carry, or undefined when it must not carry one.
 // The parsed fields are flat: name, value, never, name, value, never, ...
 const sentDate = (headers, opts) => {
-  const fields = parse(headers, undefined, opts).fields;
+  const fields = parse(headers, opts).fields;
   for (let i = 0; i < fields.length; i += 3) {
     if (fields[i] === 'date') {
       return fields[i + 1];
@@ -169,7 +169,6 @@ test('the flat-array form of a block is served like the object form', () => {
 });
 
 test('strictSingleValueFields: false turns the outbound rule off', () => {
-  const out = parse({ ':status': 200, 'content-type': ['a', 'b'] },
-    undefined, { strict: false });
+  const out = parse({ ':status': 200, 'content-type': ['a', 'b'] }, { strict: false });
   assert.deepStrictEqual(valuesOf(out, 'content-type'), ['a', 'b']);
 });

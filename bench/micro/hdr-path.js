@@ -29,23 +29,23 @@ const RESP = {
 const enc = new Encoder(4096, 4096);
 // warm the encoder: the field lines have to be in its cache for the write path
 for (let i = 0; i < 5; i++) {
-  hdr.encode(hdr.parse(RESP, undefined, { sendDate: true }), enc);
+  hdr.encode(hdr.parse(RESP, { sendDate: true }), enc);
 }
 
 console.log('--- the whole uncached path ---');
 time('parse() only', 200_000, () => {
-  globalThis.sink = hdr.parse(RESP, undefined, { sendDate: true });
+  globalThis.sink = hdr.parse(RESP, { sendDate: true });
 });
-const parsed = hdr.parse(RESP, undefined, { sendDate: true });
+const parsed = hdr.parse(RESP, { sendDate: true });
 time('encode() only (encoder warm)', 200_000, () => {
   globalThis.sink = hdr.encode(parsed, enc);
 });
 time('encode() only (encoder cold: new field every time)', 200_000, (i) => {
-  const p = hdr.parse({ ...RESP, 'x-n': String(i) }, undefined, { sendDate: false });
+  const p = hdr.parse({ ...RESP, 'x-n': String(i) }, { sendDate: false });
   globalThis.sink = hdr.encode(p, enc);
 });
 time('parse() of 5 fields with a fresh value', 200_000, (i) => {
-  globalThis.sink = hdr.parse({ ...RESP, 'x-n': String(i) }, undefined, { sendDate: false });
+  globalThis.sink = hdr.parse({ ...RESP, 'x-n': String(i) }, { sendDate: false });
 });
 
 console.log('\n--- the pieces of parse() ---');

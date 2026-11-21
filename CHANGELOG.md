@@ -3,6 +3,37 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.9.1] - 2026-11-21
+
+### Fixed
+
+- **`respond()` and `pushStream()` no longer read `options.sensitiveHeaders`.** node's
+  `buildNgHeaderString` consults only the `sensitiveHeaders` symbol hung on the headers
+  object itself (`internal/http2/util.js`, read from the bundled source) and ignores any
+  option of that name; h2lean honoured both, so an application setting the option got
+  never-indexed lines here and indexed lines on node. The extension is dropped, and the
+  outbound mark now rides the symbol alone on every path — server `respond`/trailers/
+  informational/`pushStream` and client `request`/trailers alike.
+- **A `WINDOW_UPDATE` that overflows a send window is a connection error, on both sides.**
+  RFC 9113 6.9.1 makes a window past 2^31-1 the connection's problem and node v26.12.1
+  agrees in both directions: the server answers the overflowing update with
+  `GOAWAY(FLOW_CONTROL_ERROR)` naming the stream in `lastStreamID`, no `RST_STREAM`,
+  `ERR_HTTP2_ERROR` on the stream and the session (h2lean reset only the stream and kept
+  the connection alive for a peer that had already broken its budget); the client answers
+  with `GOAWAY(3)` outbound, `ERR_HTTP2_ERROR` on stream and session, the stream closed
+  `rstCode` 2 — its update path had no cap at all and absorbed increments unbounded.
+  Pinned for sid 0 and sid>0 on both arms (`test/inbound-limits.test.js`,
+  `test/client/client-fatal.test.js`).
+- **An inbound `GOAWAY(NO_ERROR)` below the open stream ids now refuses those streams, as
+  nghttp2 does.** Measured on a live node v26.12.1 client with two unanswered requests and
+  `lastStreamID` 0 against a raw peer: the refusal runs newest-id-first — the reverse of
+  the non-zero destroy's ascending order — each stream reporting `ERR_HTTP2_STREAM_ERROR`
+  naming `NGHTTP2_REFUSED_STREAM` and closing with `rstCode` 7, with no session-level
+  error, then the session closes for good and a second `GOAWAY(0,0)` lands on the wire.
+  h2lean left those streams alive at `rstCode` 0, so the graceful close waited on work the
+  peer had already disowned. A mark above the open ids refuses nothing; both shapes are
+  pinned with identical transcripts on both arms (`test/client/client-goaway-inbound.test.js`).
+
 ## [0.9.0] - 2026-11-21
 
 ### Added

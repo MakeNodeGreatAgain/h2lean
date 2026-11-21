@@ -81,18 +81,18 @@ const RESP = {
   'x-trace': '0123456789abcdef0123456789abcdef'
 };
 for (let i = 0; i < 5; i++) {
-  const p = hdr.parse(RESP, undefined, { sendDate: true });
+  const p = hdr.parse(RESP, { sendDate: true });
   hdr.encode(p, enc);
 }
 time('parse() of 5 fields', 200_000, () => {
-  globalThis.sink = hdr.parse(RESP, undefined, { sendDate: true });
+  globalThis.sink = hdr.parse(RESP, { sendDate: true });
 });
 time('parse()+encode() of 5 fields (all stable)', 200_000, () => {
-  const p = hdr.parse(RESP, undefined, { sendDate: true });
+  const p = hdr.parse(RESP, { sendDate: true });
   globalThis.sink = hdr.encode(p, enc);
 });
 time('parse()+encode() with 1 fresh value', 200_000, (i) => {
-  const p = hdr.parse({ ...RESP, 'x-n': String(i) }, undefined, { sendDate: false });
+  const p = hdr.parse({ ...RESP, 'x-n': String(i) }, { sendDate: false });
   globalThis.sink = hdr.encode(p, enc);
 });
 console.log('');

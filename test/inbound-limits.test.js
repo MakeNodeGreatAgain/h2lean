@@ -86,8 +86,8 @@ const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, closeServer } = require('./diff-harness');
 
-const CODE_NAMES = { 0: 'NO_ERROR', 1: 'PROTOCOL_ERROR', 2: 'INTERNAL_ERROR', 5: 'STREAM_CLOSED',
-  6: 'FRAME_SIZE_ERROR', 7: 'REFUSED_STREAM', 9: 'COMPRESSION_ERROR',
+const CODE_NAMES = { 0: 'NO_ERROR', 1: 'PROTOCOL_ERROR', 2: 'INTERNAL_ERROR', 3: 'FLOW_CONTROL_ERROR',
+  5: 'STREAM_CLOSED', 6: 'FRAME_SIZE_ERROR', 7: 'REFUSED_STREAM', 9: 'COMPRESSION_ERROR',
   11: 'ENHANCE_YOUR_CALM' };
 const name = (n) => CODE_NAMES[n] !== undefined ? CODE_NAMES[n] : String(n);
 
@@ -389,6 +389,30 @@ test('WINDOW_UPDATE over the max frame size ends the connection', async () => {
     sock.write(frame(f.WINDOW_UPDATE, 0, 0, p));
     sock.write(req(REQ));
   }, 'GOAWAY(FRAME_SIZE_ERROR)');
+});
+
+test('a WINDOW_UPDATE that overflows a stream send window ends the connection', async () => {
+  // RFC 9113 6.9.1: a sender whose window would pass 2^31-1 MUST terminate the stream or
+  // the connection, and nghttp2 takes the connection half for the per-stream window just as
+  // for the connection's -- measured on a live node v26.12.1 server with the response open
+  // and the initial 65535 window untouched: GOAWAY(FLOW_CONTROL_ERROR) with lastStreamID
+  // naming the stream, no RST_STREAM, ERR_HTTP2_ERROR on the stream and the session. This
+  // used to be h2lean's stream-level reset -- a live connection left open for a peer that
+  // has already broken its window budget (out/probe-wu-overflow/server.js).
+  await both('WU(1, 0x7fffffff) on the unconsumed window', undefined, false, (sock) => {
+    sock.write(req(REQ));
+    sock.write(wu(1, 0x7fffffff));
+  }, 'GOAWAY(FLOW_CONTROL_ERROR)');
+});
+
+test('a WINDOW_UPDATE that overflows the connection send window ends the connection', async () => {
+  // The connection-level half of the same rule: 65535 + 0x7fffffff passes the ceiling, so
+  // one frame on sid 0 ends the session the same way. h2lean always sent the connection
+  // error here; the pin closes the coverage rather than marking a change.
+  await both('WU(0, 0x7fffffff) on the unconsumed window', undefined, false, (sock) => {
+    sock.write(req(REQ));
+    sock.write(wu(0, 0x7fffffff));
+  }, 'GOAWAY(FLOW_CONTROL_ERROR)');
 });
 
 test('HEADERS over the max frame size ends the connection, HPACK and all', async () => {

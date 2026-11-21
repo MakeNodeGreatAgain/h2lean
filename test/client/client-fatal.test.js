@@ -162,7 +162,7 @@ function responseOnEvenSid() {
 // and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. h2lean
 // pins the v24+ surface in both cases; in legacy mode the node arm only has to have sent
 // a fatal GOAWAY.
-async function assertFatalParity(answerFrames, legacy) {
+async function assertFatalParity(answerFrames, legacy, wantCode = 1) {
   for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const { events, got } = await run(impl, answerFrames);
     const joined = events.join(' | ');
@@ -174,8 +174,8 @@ async function assertFatalParity(answerFrames, legacy) {
         `${who}: unexpected GOAWAY code ${goaway.code} (${joined})`);
       continue;
     }
-    assert.strictEqual(goaway.code, 1,
-      `${who}: GOAWAY code is not PROTOCOL_ERROR (${joined})`);
+    assert.strictEqual(goaway.code, wantCode,
+      `${who}: GOAWAY code is not ${wantCode} (${joined})`);
     assert.ok(events.includes('stream error ERR_HTTP2_ERROR'),
       `${who}: no ERR_HTTP2_ERROR on the stream (${joined})`);
     assert.ok(events.includes('session error ERR_HTTP2_ERROR'),
@@ -231,4 +231,25 @@ test('response HEADERS again on a closed stream id: both stacks ignore it', asyn
     assert.ok(!events.includes('session close'),
       `${who}: the session died on a closed-stream block (${joined})`);
   }
+});
+
+// The two WINDOW_UPDATE overflows of RFC 9113 6.9.1: a send window that would pass 2^31-1
+// is a connection error, and nghttp2 treats the per-stream window exactly like the
+// connection's (measured, out/probe-wu-overflow/client.js, node v26.12.1: GOAWAY
+// (FLOW_CONTROL_ERROR) outbound, ERR_HTTP2_ERROR on the stream and the session, the stream
+// closed with rstCode NGHTTP2_INTERNAL_ERROR). The raw server answers the request's
+// HEADERS with one overflowing update -- the initial 65535 window is unconsumed, so the
+// increment alone crosses the ceiling.
+function windowOverflow(sid) {
+  const p = Buffer.alloc(4);
+  p.writeUInt32BE(0x7fffffff, 0);
+  return [frame(f.WINDOW_UPDATE, 0, sid, p)];
+}
+
+test('a WINDOW_UPDATE that overflows a stream send window: GOAWAY(FLOW_CONTROL_ERROR)', async () => {
+  await assertFatalParity(windowOverflow(1), false, f.FLOW_CONTROL_ERROR);
+});
+
+test('a WINDOW_UPDATE that overflows the connection send window: GOAWAY(FLOW_CONTROL_ERROR)', async () => {
+  await assertFatalParity(windowOverflow(0), false, f.FLOW_CONTROL_ERROR);
 });
