@@ -78,16 +78,28 @@ function drive(impl, app) {
         closeServer(srv).then(() =>
           resolve({ wire: seen.join(' ') || '(nothing)', state }));
       };
-      const timer = setTimeout(finish, 500); // the safety net; the frames usually decide it
+      // Both windows are idle confirmations, not verdicts: the transcript resolves the moment
+      // the terminal RST_STREAM or GOAWAY arrives, and every green wire in this file ends on
+      // one, so a longer window costs a passing run nothing -- it is paid only by a transcript
+      // whose trailing frame is still in flight, which is exactly the state a window must not
+      // cut short. The trailing RST of the unread-request rule is scheduled by the server's
+      // loop after the response's END_STREAM, and under a parallel test runner's load one
+      // round of that scheduling can land past a sub-second window. The assertions pin exact
+      // frame sequences, so a transcript compared without its last frame fails as if a stack
+      // verdict had changed -- the shape this file was seen failing with on the CI matrix,
+      // where nothing reproduced on any binary here (20/22/24/26, isolated and loaded). Both
+      // windows therefore take the suite's established multi-second idle waits
+      // (test/trailers.test.js 1200, test/upstream/origin.test.js 5000) at 2000.
+      const timer = setTimeout(finish, 2000);
       // END_STREAM ends the STREAM and not the connection: node follows its own last DATA with
-      // the RST_STREAM of the unread-request rule, so the transcript gets a short settling window
+      // the RST_STREAM of the unread-request rule, so the transcript gets a settling window
       // after it instead of resolving on it. A GOAWAY really is last and resolves at once.
       let settling = null;
       const settle = () => {
         if (settling !== null || settled) {
           return;
         }
-        settling = setTimeout(finish, 150);
+        settling = setTimeout(finish, 2000);
       };
       sock.on('data', (d) => {
         if (settled) {

@@ -65,6 +65,13 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   deadline, so the `GOAWAY(COMPRESSION_ERROR)` the server had already sent was reported as
   `nothing` — a slow read mistaken for silence. A `GOAWAY` ends the connection, so nothing
   can follow it: resolving on arrival makes the fatal cases independent of payload size.
+  `test/response-start.test.js` is the trailing-frame variant: its transcripts resolve on
+  the terminal frame, but the unread-request auto-close RST that follows a response's
+  END_STREAM is unsolicited, and a sub-second settling window can beat the server's
+  scheduling of it under a parallel runner's load — the exact-wire assertions then compare
+  a transcript without its last frame and fail as if a verdict changed. The window is idle
+  confirmation, not a verdict, and no green wire in that file ends on it, so widening it
+  (150 → 2000 ms, the safety deadline alongside) costs a passing run nothing.
 * **Batching-dependent verdicts.** A raw client that resolves its transcript on a
   deadline must not assert on a verdict that lives or dies with the peer's write
   batching. The message-framing rules of AGENTS.md §8/B2 are only visible to nghttp2 once
