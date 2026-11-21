@@ -31,9 +31,6 @@ const INITIAL_WINDOW_CEILING_2_31 = NODE_MAJOR >= 24;
 const NO_RST_ON_MULTI_DESTROY = NODE_MAJOR >= 24;
 // The server stream writableHighWaterMark is 65536 from 22 on; 16384 on 20.
 const STREAM_HWM_64K = NODE_MAJOR >= 22;
-// A response started and destroyed in the same turn of the loop: node discards the queued
-// HEADERS from 26 on (the peer sees only RST); 20/22/24 send HEADERS then RST.
-const SAME_TURN_DESTROY_DISCARDS = NODE_MAJOR >= 26;
 
 module.exports = {
   NODE_MAJOR,
@@ -43,6 +40,5 @@ module.exports = {
   SOCKET_DESTROY_ROUTED,
   INITIAL_WINDOW_CEILING_2_31,
   NO_RST_ON_MULTI_DESTROY,
-  STREAM_HWM_64K,
-  SAME_TURN_DESTROY_DISCARDS
+  STREAM_HWM_64K
 };

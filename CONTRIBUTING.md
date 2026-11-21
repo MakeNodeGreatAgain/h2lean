@@ -65,20 +65,17 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   deadline, so the `GOAWAY(COMPRESSION_ERROR)` the server had already sent was reported as
   `nothing` — a slow read mistaken for silence. A `GOAWAY` ends the connection, so nothing
   can follow it: resolving on arrival makes the fatal cases independent of payload size.
-  `test/response-start.test.js` is the trailing-frame variant: its transcripts resolve on
-  the terminal frame, but the unread-request auto-close RST that follows a response's
-  END_STREAM is unsolicited, and a sub-second settling window can beat the server's
-  scheduling of it under a parallel runner's load — the exact-wire assertions then compare
-  a transcript without its last frame and fail as if a verdict changed. The window is idle
-  confirmation, not a verdict, and no green wire in that file ends on it, so widening it
-  (150 → 2000 ms, the safety deadline alongside) costs a passing run nothing.
 * **Batching-dependent verdicts.** A raw client that resolves its transcript on a
   deadline must not assert on a verdict that lives or dies with the peer's write
   batching. The message-framing rules of AGENTS.md §8/B2 are only visible to nghttp2 once
   the application has read, and an answer queued in the same read batch as a refusal is
   discarded by node **most** of the time — measured 6/6 in one shape and 0/6 under
   full-suite load in another. Assert the verdict frame (the rule), not the whole
-  transcript, and write the measured frequency next to the relaxed assertion.
+  transcript, and write the measured frequency next to the relaxed assertion. The
+  destroy-side same-turn divergence in `test/response-start.test.js` is the same class
+  from the other side: node 22 discarded the queued response in CI where the pre-26 norm
+  sends, so its node arm pins the rule (the reset of a started response) and the
+  per-major wires stay as norms in the failure message.
 * **Timing tests use sub-second values** (`< 1000 ms`) unless they deliberately test the
   shared FastTimer path: delays ≥ 1000 ms ride a 499 ms clock with ±500 ms accuracy, so a
   strict assertion against wall clock will flake.
@@ -388,9 +385,16 @@ the decision, the measurements and the pins. None of them is a to-do list.
   The trigger is the turn, not the empty write: `write('x')` then `destroy()` flushes on
   both arms, and so does a destroy a `setImmediate` later. `respond()+end('body')` then
   `destroy()` loses the END_STREAM on node (its `endCheckNT` had not run) and keeps it
-  here. `headersSent` and `rstCode` agree on every shape. Matching node means discarding
-  outbound state at destroy time, and the staging buffer is flat bytes with no per-stream
-  handle on them — the same patch the refusal case needs, not a second one.
+  here. `headersSent` and `rstCode` agree on every shape. Which of the two node wires a
+  shape produces is nghttp2's write batching, not a rule: the discard is node 26's norm
+  and the older majors send the queued response, but node 22 discarded the `write('')`
+  shape in CI (the transcript resolved on the terminal RST in ~125 ms, so no window was
+  involved) and the refusal-batch test caught node 26 answering once under full-suite
+  load — so the test pins the rule, a started response ending in the unread-request
+  `RST_STREAM(0)` with `headersSent` true on both stacks, plus h2lean's exact wire, and
+  keeps the per-major wires as norms for the failure message. Matching node means
+  discarding outbound state at destroy time, and the staging buffer is flat bytes with
+  no per-stream handle on them — the same patch the refusal case needs, not a second one.
 * **The h2spec arms that both stacks fail are not ours to fix — do not bend the code to
   the tool.** `npm run spec` prints three buckets and the middle one ("both (n) — node
   deviates too, parity keeps it") is the one that gets read as a bug list. Four arms sit

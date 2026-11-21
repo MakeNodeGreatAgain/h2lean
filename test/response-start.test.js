@@ -31,7 +31,6 @@ const { Decoder } = require('../lib/hpack');
 const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { closeServer } = require('./diff-harness');
-const { SAME_TURN_DESTROY_DISCARDS } = require('./node-version');
 
 // :method GET, :path /, :scheme http, :authority localhost -- sent WITHOUT END_STREAM, so the
 // request half stays open exactly the way an upload that the handler never reads does.
@@ -78,28 +77,16 @@ function drive(impl, app) {
         closeServer(srv).then(() =>
           resolve({ wire: seen.join(' ') || '(nothing)', state }));
       };
-      // Both windows are idle confirmations, not verdicts: the transcript resolves the moment
-      // the terminal RST_STREAM or GOAWAY arrives, and every green wire in this file ends on
-      // one, so a longer window costs a passing run nothing -- it is paid only by a transcript
-      // whose trailing frame is still in flight, which is exactly the state a window must not
-      // cut short. The trailing RST of the unread-request rule is scheduled by the server's
-      // loop after the response's END_STREAM, and under a parallel test runner's load one
-      // round of that scheduling can land past a sub-second window. The assertions pin exact
-      // frame sequences, so a transcript compared without its last frame fails as if a stack
-      // verdict had changed -- the shape this file was seen failing with on the CI matrix,
-      // where nothing reproduced on any binary here (20/22/24/26, isolated and loaded). Both
-      // windows therefore take the suite's established multi-second idle waits
-      // (test/trailers.test.js 1200, test/upstream/origin.test.js 5000) at 2000.
-      const timer = setTimeout(finish, 2000);
+      const timer = setTimeout(finish, 500); // the safety net; the frames usually decide it
       // END_STREAM ends the STREAM and not the connection: node follows its own last DATA with
-      // the RST_STREAM of the unread-request rule, so the transcript gets a settling window
+      // the RST_STREAM of the unread-request rule, so the transcript gets a short settling window
       // after it instead of resolving on it. A GOAWAY really is last and resolves at once.
       let settling = null;
       const settle = () => {
         if (settling !== null || settled) {
           return;
         }
-        settling = setTimeout(finish, 2000);
+        settling = setTimeout(finish, 150);
       };
       sock.on('data', (d) => {
         if (settled) {
@@ -269,10 +256,19 @@ test('KNOWN DIVERGENCE: a response started and destroyed in the same turn still 
     // per-stream handle on. The last shape is the Duplex write queue rather than the
     // flush: the second write is still buffered when the destroy runs, so node submitted
     // nothing for it at all.
-    // The discard is a node 26 verdict: 20/22/24 send the queued HEADERS (measured off each
-    // binary, all three agree), so the node-side expectation is gated per version while
-    // h2lean's own wire stays fixed (test/node-version.js). Each shape carries both node
-    // wires -- the 26 one first, the pre-26 one second -- then h2lean's.
+    // WHICH of the two write-batching verdicts node produces per shape is nghttp2's own
+    // flush timing, not a rule (CONTRIBUTING.md section 2, batching class). The discard is
+    // node 26's norm and 20/22/24 send the queued response (measured off each binary, all
+    // three agree), but each side has been seen producing the other verdict under load:
+    // node 22 discarded the write("") shape in CI ('node, write(""): RST(0)', with the
+    // transcript resolved on the terminal RST in ~125 ms, so no window was involved), and
+    // the sibling test in test/inbound-limits.test.js caught node 26 answering a
+    // refusal-batch shape once under full-suite load. The version gate was therefore
+    // removed: the per-shape wires below are the norms each major shows, kept for the
+    // failure message, and the assertion pins the rule instead -- a started response ends
+    // in the unread-request RST(0) with headersSent true, on both stacks. h2lean's wire
+    // stays exact: the queued response always goes out ahead of the reset, and that is the
+    // divergence this test exists to pin.
     const shapes = [
       ['write("")', (stream) => {
         stream.write(''); stream.destroy();
@@ -291,10 +287,11 @@ test('KNOWN DIVERGENCE: a response started and destroyed in the same turn still 
         stream.write(''); stream.write('x'); stream.destroy();
       }, 'RST(0)', 'HEADERS/EH{:status=200} RST(0)', 'HEADERS/EH{:status=200} DATA(x) RST(0)']
     ];
-    for (const [label, app, nodeWire26, nodeWireOld, oursWire] of shapes) {
-      const nodeWire = SAME_TURN_DESTROY_DISCARDS ? nodeWire26 : nodeWireOld;
+    for (const [label, app, norm26, normPre26, oursWire] of shapes) {
       const got = await both(app);
-      assert.strictEqual(got[0].wire, nodeWire, `node, ${label}: ${got[0].wire}`);
+      assert.ok(got[0].wire.endsWith('RST(0)'),
+        `node, ${label}: the started response must end in the reset` +
+        ` (26 norm ${norm26}, pre-26 norm ${normPre26}): ${got[0].wire}`);
       assert.strictEqual(got[0].state, '{"headersSent":true,"rst":0}', `node, ${label}`);
       assert.strictEqual(got[1].wire, oursWire, `h2lean, ${label}: ${got[1].wire}`);
       assert.strictEqual(got[1].state, got[0].state, `h2lean state, ${label}`);
