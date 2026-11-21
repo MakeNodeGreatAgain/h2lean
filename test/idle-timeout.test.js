@@ -5,11 +5,14 @@
 //   * `server.sessionTimeout` -- documented for years, and NOT present on node 26's server at
 //     all. It is therefore not implemented either: an h2lean-only property with no node
 //     counterpart is a new surface, not a compatibility fix.
-//   * `server.setTimeout(msecs)` only records `this.timeout` (internal/http2/core.js:3541) and
-//     attaches the callback; it does not walk the sessions. Measured with an idle connection
-//     and server.setTimeout(200): no 'timeout' on the session, no close, the connection simply
-//     stays. h2lean used to arm every live session from here -- inventing an event node does
-//     not emit, and skipping every connection accepted afterwards.
+//   * `server.setTimeout(msecs)` only records `this.timeout` (internal/http2/core.js) and
+//     attaches the callback; it does not arm the sessions that already exist. Measured with
+//     an idle connection and server.setTimeout(200) called after the session came up: no
+//     'timeout' on the session, no close, the connection simply stays. What h2lean used to
+//     do instead -- looping over the live sessions at call time -- invented an event node
+//     does not produce for that shape. Arming happens in the accept path: node's
+//     connectionListener hands every session accepted while server.timeout is set a
+//     session.setTimeout() whose callback reports to the server (pinned below).
 //   * `session.setTimeout(msecs)` is the per-connection policy: it counts silence, activity
 //     refreshes it, and when it fires the session only emits 'timeout'. node's `callTimeout()`
 //     destroys nothing, so closing an idle connection stays the application's call -- the test
@@ -142,9 +145,10 @@ test('activity refreshes the session timeout', async () => {
   assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
 });
 
-test('server.setTimeout does not arm a session timeout', async () => {
+test('server.setTimeout after the session exists arms nothing', async () => {
   // The regression this pins: h2lean used to loop over this._sessions here, which produced a
-  // 'timeout' node does not produce at the server level.
+  // 'timeout' node does not produce for a call that lands after the session was accepted.
+  // The accept-time arming node does instead is the next test.
   const got = [];
   for (const impl of [nodeHttp2, h2lean]) {
     got.push(await run(impl, armServer(200), async (client, log) => {
@@ -156,6 +160,87 @@ test('server.setTimeout does not arm a session timeout', async () => {
   assert.doesNotMatch(got[0], /timeout/, `node emitted a timeout: ${got[0]}`);
   assert.strictEqual(got[0], want, `node: ${got[0]}`);
   assert.strictEqual(got[1], want, `h2lean: ${got[1]} vs node: ${got[0]}`);
+});
+
+test('server.setTimeout arms the sessions accepted while it is set', async () => {
+  // node's connectionListener (internal/http2/core.js): `if (this.timeout)
+  // session.setTimeout(this.timeout, sessionOnTimeout)` -- and sessionOnTimeout emits on the
+  // SERVER, destroying the session when nobody listens ("No error code, just things down").
+  // Both shapes measured on a live node server with setTimeout(500) before listen: an idle
+  // connection with a listener produced one server 'timeout' and stayed up; without a listener
+  // the client saw the session torn down at the deadline. h2lean's arms are the same
+  // session.setTimeout() the tests above pin, so the refresh/disarm rules carry over.
+  const arms = [];
+  for (const withListener of [true, false]) {
+    const got = [];
+    for (const impl of [nodeHttp2, h2lean]) {
+      const log = [];
+      const srv = impl.createServer();
+      srv.setTimeout(300);
+      if (withListener) {
+        srv.on('timeout', () => log.push('server-timeout'));
+      }
+      srv.on('session', (session) => {
+        log.push('session');
+        session.on('close', () => log.push('session.close'));
+        session.on('goaway', (code) => log.push('goaway:' + code));
+        session.on('timeout', () => log.push('session-timeout'));
+        session.on('error', () => {});
+      });
+      srv.on('stream', (stream) => {
+        stream.on('error', () => {});
+        stream.respond({ ':status': 200 }, { endStream: true });
+      });
+      srv.on('error', () => {});
+      const port = await listen(srv);
+      const client = connect(port);
+      client.on('error', () => {});
+      try {
+        await sleep(650);
+        await ask(client, log);
+      } finally {
+        client.destroy();
+        srv.close();
+        await sleep(100);
+      }
+      got.push(log.join(' '));
+    }
+    arms.push(got);
+  }
+  // The teardown tail (the goodbye at client.destroy()) is ordered by the loop, not by the
+  // protocol -- the same allowance the run() helper above documents -- so what is compared
+  // is the live phase, everything before the first teardown-only event.
+  const live = (trace) => {
+    const out = [];
+    for (const entry of trace.split(' ')) {
+      if (entry === 'session.close' || entry === 'client.close' || /^goaway:/.test(entry)) {
+        break;
+      }
+      out.push(entry);
+    }
+    return out.join(' ');
+  };
+  // With a listener: the server reports once and the connection stays answerable. The armed
+  // callback IS a session 'timeout' listener in node, registered before any later one, so
+  // node reports to the server before logging the session's own event -- and h2lean's
+  // once('timeout') registration lands in the same position.
+  const listened = arms[0];
+  assert.strictEqual(listened[0].split('server-timeout').length - 1, 1,
+    `node fired more than once: ${listened[0]}`);
+  assert.ok(listened[0].includes('server-timeout'),
+    `node never reported: ${listened[0]}`);
+  assert.strictEqual(live(listened[0]), live(listened[1]),
+    `h2lean (with listener): ${listened[1]} vs node: ${listened[0]}`);
+  assert.ok(listened[1].includes('resp:200'),
+    `the connection did not survive its timeout (with listener): ${listened[1]}`);
+  assert.ok(!live(listened[1]).includes('session.close'),
+    `the live phase recorded a torn-down session: ${listened[1]}`);
+  // Without a listener: the session is torn down at the deadline and no request is answered.
+  const silent = arms[1];
+  assert.doesNotMatch(silent[0], /resp:200/, `node answered after the deadline: ${silent[0]}`);
+  assert.match(silent[0], /session\.close/, `node kept the session up: ${silent[0]}`);
+  assert.strictEqual(live(silent[0]), live(silent[1]),
+    `h2lean (no listener): ${silent[1]} vs node: ${silent[0]}`);
 });
 
 test('setTimeout(0) disarms an armed session', async () => {

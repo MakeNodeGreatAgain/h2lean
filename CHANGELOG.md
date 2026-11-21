@@ -3,6 +3,76 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.9.0] - 2026-11-21
+
+### Added
+
+- **`stream.respondWithFD(fd, headers, options)` and `stream.respondWithFile(path, headers,
+  options)`** — the file-response surface of node's `ServerHttp2Stream`, ported step for step
+  from the bundled `internal/http2/core.js` (v26.12.1: `respondWithFD`/`processRespondWithFD`/
+  `doSendFD`/`doSendFileFD`/`startFilePipe`): a numeric fd or an `fs.promises` `FileHandle`,
+  the options copy with its `offset`/`length`/`statCheck` checks (the FD path's 3-argument
+  `statCheck` never injects `content-length`, the file path's 2-argument one does), the
+  non-regular-file rules (`ERR_HTTP2_SEND_FILE` / `ERR_HTTP2_SEND_FILE_NOSEEK`, seek options
+  checked exactly as node's `!== undefined || > 0` pair), `waitForTrailers` marked before the
+  fd argument is validated, and the destroy-not-throw error path — `HEADERS_SENT` goes up
+  before the fields are validated, so a bad field name leaves `headersSent` true and the peer
+  sees the HEADERS followed by `RST(NGHTTP2_INTERNAL_ERROR)`, exactly node's shape. The pump
+  shares the session's staging buffer and the reference-queue fast path (`OPTIMIZATION.md`
+  item 15) instead of node's C++ `StreamPipe`, so a file body travels as owned buffers by
+  reference where node's would. Each guard was measured against a live node v26.12.1 server;
+  pinned by the ported upstream suite (`test/upstream/respond-file-*.test.js`,
+  `test/upstream/respond-with-fd-finish.test.js`, `test/upstream/timeout-large-write-file.test.js`,
+  `test/upstream/file-reset-pending-write.test.js`).
+- **The `'finish'` event and the `writableFinished` getter on the server `Http2Stream`.**
+  `'finish'` is queued on a nextTick once the writable half has ended with every octet
+  accepted by the session (nothing parked on window credit), before any `wantTrailers`/close
+  tick, and is never emitted for a stream destroyed before completion — node's Writable
+  semantics, measured on a live v26.12.1 server (a clean `respondWithFD` reports `finish`
+  after the pump completes and `close` with `writableFinished` true; an abort after
+  `respondWithFD` reports only `close` with `writableFinished` false). The file paths mark
+  the writable ending themselves, the way node's `processRespondWithFD` `self.end()` does, so
+  node's `closeStream` rule — a destroyed file response reports no `'aborted'` — holds here
+  too. Pinned by `test/upstream/respond-with-fd-finish.test.js`.
+
+### Fixed
+
+- **`PUSH_PROMISE` now precedes the parent stream's final `DATA`/`END_STREAM` on the wire.**
+  node's nghttp2 client refuses a push that arrives after the parent stream's final body: the
+  promised stream draws `RST_STREAM(CANCEL)` and no `'push'` event fires (measured with a
+  crafted raw-socket server speaking to a real `node:http2` client). nghttp2's send cycle
+  flushes control frames before DATA (`nghttp2_session_send`), so a server that promises in
+  the same batch as the last body always puts the `PUSH_PROMISE` first; h2lean serialised the
+  outbound batch in emit order, so `respond(); end(); pushStream()` put `END_STREAM` before
+  the promise and node clients cancelled the push (upstream
+  `test-http2-respond-file-push.js` hung on it). `DATA`+`END_STREAM` frames are now recorded
+  per stream while the batch is staged; `sendPushPromise` cuts the not-yet-written `END_STREAM`
+  frame out and the batch write glues it onto the tail after the flush — nghttp2's
+  control-before-DATA tail. The markers only move a frame the push cut out, so every
+  pre-existing wire order is unchanged. Pinned by `test/upstream/respond-file-push.test.js`.
+- **`respondWithFD(fd)` with no headers argument is a valid response.** node's
+  `prepareResponseHeadersObject` guards the field copy on the argument being present and
+  defaults the status to 200; h2lean's unguarded `Object.keys` turned the same call into a
+  `TypeError` that escaped as `GOAWAY` with that reason and killed the whole session, where a
+  live node server answers the request normally (measured; upstream
+  `test-http2-respond-file-fd-invalid.js` covers the bare call site).
+- **The file pump ends the message itself instead of staging an empty `DATA`+`END_STREAM`.**
+  node's pump is C++ `StreamPipe` writing into the nghttp2 handle directly and
+  `processRespondWithFD` has already closed the writable half before it starts, so the
+  application's `end()` after `respondWithFD` is a no-op and the message ends at pump EOF;
+  h2lean's pump shared the application write path, so a stale empty `DATA`+`END_STREAM` went
+  out ahead of the pump's body and node clients answered `RST_STREAM(PROTOCOL_ERROR)`
+  mid-transfer (upstream sequential `test-http2-timeout-large-write-file.js` failed with it).
+  The pump now mirrors `end()`'s body completion without the ended-guard, honouring
+  `waitForTrailers` with the same split. Pinned by
+  `test/upstream/timeout-large-write-file.test.js`.
+- **The server arms the idle timeout on accepted sessions.** node's `connectionListener`
+  hands every session accepted while `server.timeout` is set a `session.setTimeout()` whose
+  callback reports to the server (`server.emit('timeout', session)`) and destroys the session
+  when nobody listens; h2lean left accepted sessions unarmed, so an idle connection never
+  timed out. Measured against a live node v26.12.1 server with `setTimeout(500)` before
+  `listen`.
+
 ## [0.8.1] - 2026-11-21
 
 ### Fixed

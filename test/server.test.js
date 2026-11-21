@@ -245,7 +245,7 @@ test('h2lean decodes the same request headers node:http2 does', async () => {
   }
 });
 
-test('session setTimeout measures silence, not wall clock', async () => {
+test('session setTimeout replaces the timer, not the listeners', async () => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const srv = h2lean.createServer();
   srv.on('stream', (stream) => stream.respond({ ':status': 200 }, { endStream: true }));
@@ -259,7 +259,10 @@ test('session setTimeout measures silence, not wall clock', async () => {
   });
   session.setTimeout(200, () => {
     fired++;
-  }); // must replace, not stack
+  });
+  // node's setStreamTimeout clears only the timer -- the once('timeout') listeners
+  // both stay registered and both fire (measured on a live node server: the same
+  // shape reported 2 after the idle period)
   try {
     for (let i = 0; i < 3; i++) {
       await sleep(80); // traffic well inside 200 ms
@@ -267,7 +270,7 @@ test('session setTimeout measures silence, not wall clock', async () => {
     }
     assert.strictEqual(fired, 0, 'incoming frames must refresh the idle timer');
     await sleep(400); // then silence
-    assert.strictEqual(fired, 1, 'exactly one timeout after the idle period');
+    assert.strictEqual(fired, 2, 'both listeners fire once the silence matures');
   } finally {
     // torn down whatever the assertions did: with the refresh guard removed the first assert
     // throws, the server and its client socket stayed alive, and the file's process never
