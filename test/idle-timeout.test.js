@@ -100,7 +100,16 @@ function canonical(log) {
 
 // A request that must be answered; reports what the client got back.
 async function ask(client, log) {
-  const req = client.request({ ':method': 'GET', ':path': '/' });
+  // node 20/22 throw out of request() on a session the peer already tore down; 24+ accept
+  // the call and report the same code on the returned stream (test/node-version.js
+  // DEFERRED_REQUEST_ERROR). Catching the throw keeps one transcript across the lines.
+  let req;
+  try {
+    req = client.request({ ':method': 'GET', ':path': '/' });
+  } catch (e) {
+    log.push('resp:err:' + e.code);
+    return;
+  }
   req.resume();
   const got = await new Promise((resolve) => {
     req.on('response', (h) => resolve(h[':status']));

@@ -20,9 +20,12 @@
 // guard). The port pins the measured behavior: the res events fire on both stacks.
 //
 // The abort shape also differs on the wire in a way that is already this project's
-// documented divergence (the queued-HEADERS discard on a same-turn destroy): node drops the
-// response it had queued in the turn and the client sees no 'response' event at all, while
-// h2lean's HEADERS were framed inside the call and reach the peer. The stream-side and
+// documented divergence (the queued-HEADERS discard on a same-turn destroy): node 26 drops
+// the response it had queued in the turn and the client sees no 'response' event at all,
+// while 20/22/24 all send the queued HEADERS (measured) and 26 is the outlier -- h2lean's
+// HEADERS were framed inside the call and reach the peer on every version. The node-side
+// expectation is gated on that boundary (test/node-version.js
+// SAME_TURN_HEADERS_DISCARDED). The stream-side and
 // compat-side transcripts are pinned per stack; what is pinned on both is the writable
 // semantics this file exists for: no 'finish', no 'aborted', 'close' with
 // writableFinished false.
@@ -41,6 +44,7 @@ const os = require('node:os');
 const path = require('node:path');
 const h2lean = require('../../index');
 const { listen, closeServer } = require('../diff-harness');
+const { SAME_TURN_HEADERS_DISCARDED } = require('../node-version');
 
 const SIZE = 64;
 
@@ -121,15 +125,17 @@ test('upstream: an aborted file pipe reports no finish and no aborted', async ()
   const nodeGot = await arm(http2, true);
   const leanGot = await arm(h2lean, true);
   // The stream-side and compat-side semantics are the shared claim; the client's view of
-  // the response is the queued-HEADERS divergence (see the header): node discards the
-  // response queued in the same turn, h2lean delivers the HEADERS it framed in the call.
+  // the response is the queued-HEADERS divergence (see the header): node 26 discards the
+  // response queued in the same turn, 20/22/24 send it, and h2lean delivers the HEADERS it
+  // framed in the call on every version.
   const want = {
     stream: ['close'],
     res: ['finish', 'close'],
     streamErrorWf: false,
     bodyLength: 0
   };
-  assert.deepStrictEqual(nodeGot, { ...want, response: false },
+  assert.deepStrictEqual(nodeGot,
+    { ...want, response: !SAME_TURN_HEADERS_DISCARDED },
     `node: ${JSON.stringify(nodeGot)}`);
   assert.deepStrictEqual(leanGot, { ...want, response: true },
     `h2lean: ${JSON.stringify(leanGot)}`);

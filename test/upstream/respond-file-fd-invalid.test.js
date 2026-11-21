@@ -30,6 +30,7 @@ function expectStreamError(err) {
 async function arm(serverLib) {
   const srv = serverLib.createServer();
   const port = await listen(srv);
+  let client;
   try {
     await new Promise((resolve) => {
       let serverDone = false;
@@ -57,7 +58,7 @@ async function arm(serverLib) {
         });
       });
 
-      const client = http2.connect(`http://127.0.0.1:${port}`);
+      client = http2.connect(`http://127.0.0.1:${port}`);
       client.on('error', () => {});
       const req = client.request();
       req.on('response', () => {});
@@ -76,6 +77,10 @@ async function arm(serverLib) {
       req.end();
     });
   } finally {
+    // node 20/22 leave this client connection open after the server closes: without
+    // the destroy the file's process keeps a live socket and the runner sits on it
+    // until the per-file timeout.
+    client.destroy();
     await closeServer(srv);
   }
 }

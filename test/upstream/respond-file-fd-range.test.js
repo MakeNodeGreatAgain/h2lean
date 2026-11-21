@@ -39,6 +39,7 @@ async function arm(serverLib) {
   const fd = fs.openSync(file, 'r');
   const srv = serverLib.createServer();
   const port = await listen(srv);
+  let client;
   try {
     srv.on('stream', (stream, headers) => {
       const [offset, length] = getOffsetLength(headers.range);
@@ -61,7 +62,7 @@ async function arm(serverLib) {
           resolve();
         }
       };
-      const client = http2.connect(`http://127.0.0.1:${port}`);
+      client = http2.connect(`http://127.0.0.1:${port}`);
       client.on('error', reject);
       const run = (range, wantLength, wantBody) => {
         const req = client.request({ range });
@@ -93,6 +94,10 @@ async function arm(serverLib) {
       run('bytes=8-28', 9, 9);
     });
   } finally {
+    // node 20/22 leave this client connection open after the server closes: without
+    // the destroy the file's process keeps a live socket and the runner sits on it
+    // until the per-file timeout.
+    client.destroy();
     await closeServer(srv);
     fs.closeSync(fd);
     fs.rmSync(dir, { recursive: true, force: true });

@@ -30,6 +30,7 @@ async function arm(serverLib) {
   const fileHandle = await fs.promises.open(file, 'r');
   const srv = serverLib.createServer();
   const port = await listen(srv);
+  let client;
   try {
     srv.on('stream', (stream) => {
       stream.respondWithFD(fileHandle, {
@@ -38,7 +39,7 @@ async function arm(serverLib) {
       });
     });
     await new Promise((resolve, reject) => {
-      const client = http2.connect(`http://127.0.0.1:${port}`);
+      client = http2.connect(`http://127.0.0.1:${port}`);
       client.on('error', reject);
       const req = client.request();
       req.on('response', (headers) => {
@@ -66,6 +67,10 @@ async function arm(serverLib) {
       req.end();
     });
   } finally {
+    // node 20/22 leave this client connection open after the server closes: without
+    // the destroy the file's process keeps a live socket and the runner sits on it
+    // until the per-file timeout.
+    client.destroy();
     await closeServer(srv);
     await fileHandle.close();
     fs.rmSync(dir, { recursive: true, force: true });

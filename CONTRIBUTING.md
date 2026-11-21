@@ -26,7 +26,7 @@ numbered performance knowledge; `SECURITY.md` is the outward-facing threat model
   message.
 * **The suite is pinned to v26.12.1 but runs green on the engines floor (20) and up.** A
   handful of verdicts changed between node 20 and 26; `test/node-version.js` exports
-  `NODE_MAJOR` and a named gate per measured boundary (six at >=24, the server stream
+  `NODE_MAJOR` and a named gate per measured boundary (seven at >=24, the server stream
   `writableHighWaterMark` at >=22, the same-turn respond+destroy HEADERS discard at >=26).
   Where h2lean deliberately follows 26 and an older node differs, the gate either skips the
   case (with the boundary as the skip reason) or gates only the node-side expectation while
@@ -273,9 +273,17 @@ The convention in one paragraph: the paired matrix is the unit of proof; every c
 * The repository is on GitHub (`origin`, branch `main`). One commit per completed change,
   made as soon as the change is verified (see `AGENTS.md` §9 for what "verified" means);
   do not batch unrelated work. Message: `type: imperative summary` (`feat:`, `fix:`,
-  `perf:`, `test:`, `docs:`, `refactor:`, `chore:`), subject ≤ 72 chars. The body explains
+  `perf:`, `test:`, `docs:`, `chore:`), subject ≤ 72 chars. The body explains
   **why**, not what — the diff shows what. Include the measurement that justified a
   performance claim and the node source or probe that justified a parity claim.
+* **Verified before a commit means the suite green on 22, 24 and 26, not only on the
+  development major.** A single-version run cannot see the class of regression that lives
+  in the gaps between majors — the broken http2 `server.close()` on 20/22 (#57611), the
+  synchronous-throw request on those lines versus the deferred error on 24+
+  (`test/node-version.js`), a client session that only self-closes on 24+ and keeps its
+  socket open below. The CI matrix runs exactly 22/24/26; a change that is green there and
+  red here wastes the round trip, and a hang costs the CI suite two minutes per affected
+  file.
 * `CHANGELOG.md` is the user-facing history, reverse chronological, Keep-a-Changelog
   style:
   * entries are drafted under `## [Unreleased]`, and **the commit that adds one also cuts

@@ -85,6 +85,7 @@ const f = require('../lib/frames');
 const h2lean = require('../index');
 const nodeHttp2 = require('node:http2');
 const { listen, closeServer } = require('./diff-harness');
+const { WINDOW_OVERFLOW_FATAL } = require('./node-version');
 
 const CODE_NAMES = { 0: 'NO_ERROR', 1: 'PROTOCOL_ERROR', 2: 'INTERNAL_ERROR', 3: 'FLOW_CONTROL_ERROR',
   5: 'STREAM_CLOSED', 6: 'FRAME_SIZE_ERROR', 7: 'REFUSED_STREAM', 9: 'COMPRESSION_ERROR',
@@ -398,11 +399,15 @@ test('a WINDOW_UPDATE that overflows a stream send window ends the connection', 
   // and the initial 65535 window untouched: GOAWAY(FLOW_CONTROL_ERROR) with lastStreamID
   // naming the stream, no RST_STREAM, ERR_HTTP2_ERROR on the stream and the session. This
   // used to be h2lean's stream-level reset -- a live connection left open for a peer that
-  // has already broken its window budget (out/probe-wu-overflow/server.js).
+  // has already broken its window budget (out/probe-wu-overflow/server.js). On 20/22 node
+  // still answers that shape at stream level (RST, connection up), so the node side is
+  // gated to the measured major (test/node-version.js WINDOW_OVERFLOW_FATAL); h2lean keeps
+  // the v26 verdict on every version.
   await both('WU(1, 0x7fffffff) on the unconsumed window', undefined, false, (sock) => {
     sock.write(req(REQ));
     sock.write(wu(1, 0x7fffffff));
-  }, 'GOAWAY(FLOW_CONTROL_ERROR)');
+  }, 'GOAWAY(FLOW_CONTROL_ERROR)', 350,
+  WINDOW_OVERFLOW_FATAL ? 'GOAWAY(FLOW_CONTROL_ERROR)' : 'RST(FLOW_CONTROL_ERROR)');
 });
 
 test('a WINDOW_UPDATE that overflows the connection send window ends the connection', async () => {

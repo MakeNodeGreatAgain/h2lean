@@ -18,6 +18,7 @@ const net = require('node:net');
 const http2 = require('node:http2');
 const h2lean = require('../../index');
 const f = require('../../lib/frames');
+const { WINDOW_OVERFLOW_FATAL } = require('../node-version');
 
 function frame(type, flags, sid, payload) {
   const head = Buffer.alloc(f.HEADER_LEN);
@@ -159,9 +160,11 @@ function responseOnEvenSid() {
 // probe-client-fatal-node20.js, v20.19.5 / v22.21.1 / v26.12.1): for the padded shapes the
 // old bundled nghttp2 terminates the session at the C layer without surfacing anything on
 // the JS client -- no error events, no closes, the wire GOAWAY is the only observable --
-// and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. h2lean
-// pins the v24+ surface in both cases; in legacy mode the node arm only has to have sent
-// a fatal GOAWAY.
+// and for a response on an unopened or even id its wire GOAWAY code is 2, not 1. A third
+// shape works the same on 20/22: a connection-window WINDOW_UPDATE overflow leaves the
+// wire GOAWAY with the pinned code and no JS event at all. h2lean
+// pins the v24+ surface in all cases; in legacy mode the node arm only has to have sent
+// a fatal GOAWAY with one of the measured codes.
 async function assertFatalParity(answerFrames, legacy, wantCode = 1) {
   for (const [who, impl] of [['node', http2], ['h2lean', h2lean]]) {
     const { events, got } = await run(impl, answerFrames);
@@ -170,7 +173,7 @@ async function assertFatalParity(answerFrames, legacy, wantCode = 1) {
     assert.ok(goaway !== undefined,
       `${who}: no GOAWAY on the wire (${joined})`);
     if (who === 'node' && legacy) {
-      assert.ok(goaway.code === 1 || goaway.code === 2,
+      assert.ok(goaway.code === 1 || goaway.code === 2 || goaway.code === wantCode,
         `${who}: unexpected GOAWAY code ${goaway.code} (${joined})`);
       continue;
     }
@@ -239,17 +242,23 @@ test('response HEADERS again on a closed stream id: both stacks ignore it', asyn
 // (FLOW_CONTROL_ERROR) outbound, ERR_HTTP2_ERROR on the stream and the session, the stream
 // closed with rstCode NGHTTP2_INTERNAL_ERROR). The raw server answers the request's
 // HEADERS with one overflowing update -- the initial 65535 window is unconsumed, so the
-// increment alone crosses the ceiling.
+// increment alone crosses the ceiling. 20/22 differ at the stream level (no GOAWAY,
+// ERR_HTTP2_STREAM_ERROR, session alive -- test/node-version.js WINDOW_OVERFLOW_FATAL), so
+// that case is skipped there; the connection-level case leaves the wire frame on 20/22 but
+// no JS events (nghttp2 fails the session in C), which the legacy flag covers.
 function windowOverflow(sid) {
   const p = Buffer.alloc(4);
   p.writeUInt32BE(0x7fffffff, 0);
   return [frame(f.WINDOW_UPDATE, 0, sid, p)];
 }
 
-test('a WINDOW_UPDATE that overflows a stream send window: GOAWAY(FLOW_CONTROL_ERROR)', async () => {
-  await assertFatalParity(windowOverflow(1), false, f.FLOW_CONTROL_ERROR);
-});
+test('a WINDOW_UPDATE that overflows a stream send window: GOAWAY(FLOW_CONTROL_ERROR)',
+  { skip: WINDOW_OVERFLOW_FATAL ? false
+    : 'node 20/22 answer a stream window overflow at stream level, no GOAWAY (test/node-version.js WINDOW_OVERFLOW_FATAL)' },
+  async () => {
+    await assertFatalParity(windowOverflow(1), false, f.FLOW_CONTROL_ERROR);
+  });
 
 test('a WINDOW_UPDATE that overflows the connection send window: GOAWAY(FLOW_CONTROL_ERROR)', async () => {
-  await assertFatalParity(windowOverflow(0), false, f.FLOW_CONTROL_ERROR);
+  await assertFatalParity(windowOverflow(0), !WINDOW_OVERFLOW_FATAL, f.FLOW_CONTROL_ERROR);
 });

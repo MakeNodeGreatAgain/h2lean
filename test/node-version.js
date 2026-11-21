@@ -31,6 +31,20 @@ const INITIAL_WINDOW_CEILING_2_31 = NODE_MAJOR >= 24;
 const NO_RST_ON_MULTI_DESTROY = NODE_MAJOR >= 24;
 // The server stream writableHighWaterMark is 65536 from 22 on; 16384 on 20.
 const STREAM_HWM_64K = NODE_MAJOR >= 22;
+// A WINDOW_UPDATE that overflows a send window (RFC 9113 6.9.1) is a connection error from
+// 24 on; 20/22 answer it at stream level. Measured on 20.19.5 and 22.21.1: the server-side
+// per-stream overflow sends RST_STREAM(FLOW_CONTROL_ERROR) and leaves the connection up
+// (24/26 send GOAWAY(FLOW_CONTROL_ERROR), no RST); the client-side per-stream overflow sends
+// no GOAWAY at all and reports ERR_HTTP2_STREAM_ERROR on the stream with the session alive;
+// the client-side connection overflow reaches the wire as a GOAWAY but surfaces no JS event
+// (nghttp2 tears the session down in C), so only the frame itself can be asserted there.
+// h2lean follows 24/26 on every major (AGENTS.md 1).
+const WINDOW_OVERFLOW_FATAL = NODE_MAJOR >= 24;
+// The queued-HEADERS discard on a same-turn destroy (AGENTS.md 10): node 26 discards a
+// response started and destroyed in one turn of the loop and only the RST_STREAM leaves;
+// 20.19.5, 22.21.1 and 24.22.3 all send the queued HEADERS. h2lean frames the HEADERS in
+// the call and always delivers them, so only the node-side expectation is gated.
+const SAME_TURN_HEADERS_DISCARDED = NODE_MAJOR >= 26;
 
 module.exports = {
   NODE_MAJOR,
@@ -40,5 +54,7 @@ module.exports = {
   SOCKET_DESTROY_ROUTED,
   INITIAL_WINDOW_CEILING_2_31,
   NO_RST_ON_MULTI_DESTROY,
-  STREAM_HWM_64K
+  STREAM_HWM_64K,
+  WINDOW_OVERFLOW_FATAL,
+  SAME_TURN_HEADERS_DISCARDED
 };
