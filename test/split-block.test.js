@@ -69,8 +69,8 @@ function exchange(impl, cut) {
       };
     });
     srv.on('request', (req, res) => {
-      // The string keys only: node's headers carry a Symbol(sensitiveHeaders)
-      // beside them, and a symbol is not a field.
+      // The string keys only: the never-indexed names live under node's
+      // Symbol(sensitiveHeaders) beside them, and a symbol is not a field.
       const fields = {};
       for (const key of Object.keys(req.headers)) {
         fields[key] = req.headers[key];

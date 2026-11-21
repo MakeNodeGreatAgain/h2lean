@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com); entries are reverse chronological.
 
+## [0.8.1] - 2026-11-21
+
+### Fixed
+
+- **Inbound header objects now carry node's `http2.sensitiveHeaders` symbol.** node hangs the
+  internal symbol on every header object it delivers (`util.js` `toHeaderObject`): server
+  `'stream'`-event headers, compat `req.headers` and `req.trailers`, stream `'trailers'`, client
+  response headers and push-promise headers. Its value is the lowercased names of the field lines
+  that arrived as never-indexed HPACK literals (RFC 7541 6.2.3) — one entry per *delivered* line,
+  duplicates preserved in arrival order, `[]` when there are none. h2lean returned `undefined`,
+  so `headers[http2.sensitiveHeaders]` saw a different shape than on `node:http2`. The decoder
+  tags never-indexed literals on a side channel, the names are filtered to the lines the
+  application actually receives (fields dropped as illegal are not listed), the list is frozen in
+  `shareHeaders` mode, and the array is fresh per object the way node allocates it. The server's
+  outbound builders (`respond`/`pushStream`) keep honoring `headers[http2.sensitiveHeaders]` for
+  never-indexed encoding, as before. Measured against node v26.12.1; pinned by
+  `test/sensitive-headers.test.js` on both stacks.
+
 ## [0.8.0] - 2026-11-20
 
 ### Added
